@@ -5,19 +5,41 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import Index from './pages/Index'
 import NotFound from './pages/NotFound'
 import Layout from './components/Layout'
+import Login from './pages/Login'
+import Users from './pages/Users'
+import Products from './pages/Products'
+import Reports from './pages/Reports'
+import { AuthProvider } from './hooks/use-auth'
+import { ProtectedRoute } from './components/ProtectedRoute'
 
 const App = () => (
   <BrowserRouter future={{ v7_startTransition: false, v7_relativeSplatPath: false }}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <Routes>
-        <Route element={<Layout />}>
-          <Route path="/" element={<Index />} />
-        </Route>
-        <Route path="*" element={<NotFound />} />
-      </Routes>
-    </TooltipProvider>
+    <AuthProvider>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <Routes>
+          <Route path="/login" element={<Login />} />
+
+          <Route element={<ProtectedRoute />}>
+            <Route element={<Layout />}>
+              <Route path="/" element={<Index />} />
+
+              <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
+                <Route path="/users" element={<Users />} />
+              </Route>
+
+              <Route element={<ProtectedRoute allowedRoles={['admin', 'manager']} />}>
+                <Route path="/products" element={<Products />} />
+                <Route path="/reports" element={<Reports />} />
+              </Route>
+            </Route>
+          </Route>
+
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </TooltipProvider>
+    </AuthProvider>
   </BrowserRouter>
 )
 
