@@ -7,6 +7,8 @@ import {
   FilterX,
   Search,
   Loader2,
+  ListOrdered,
+  History,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -24,11 +26,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { getInventoryCounts, InventoryCount } from '@/services/inventory_counts'
+import { getInventoryLevels, InventoryLevel } from '@/services/inventory_levels'
 import { getAreas, getSubareas, Area, Subarea } from '@/services/inventory'
 import { getUsers, User } from '@/services/users'
 import { useToast } from '@/hooks/use-toast'
@@ -39,12 +43,12 @@ const safeDate = (dateStr: string) => parseISO(dateStr.replace(' ', 'T'))
 export default function Reports() {
   const { toast } = useToast()
   const [counts, setCounts] = useState<InventoryCount[]>([])
+  const [levels, setLevels] = useState<InventoryLevel[]>([])
   const [areas, setAreas] = useState<Area[]>([])
   const [subareas, setSubareas] = useState<Subarea[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
 
-  // Filters
   const [startDate, setStartDate] = useState<string>('')
   const [endDate, setEndDate] = useState<string>('')
   const [userId, setUserId] = useState<string>('_all_')
@@ -56,16 +60,19 @@ export default function Reports() {
     const loadData = async () => {
       try {
         setLoading(true)
-        const [fetchedCounts, fetchedAreas, fetchedSubareas, fetchedUsers] = await Promise.all([
-          getInventoryCounts(),
-          getAreas(),
-          getSubareas(),
-          getUsers(),
-        ])
+        const [fetchedCounts, fetchedAreas, fetchedSubareas, fetchedUsers, fetchedLevels] =
+          await Promise.all([
+            getInventoryCounts(),
+            getAreas(),
+            getSubareas(),
+            getUsers(),
+            getInventoryLevels(),
+          ])
         setCounts(fetchedCounts)
         setAreas(fetchedAreas)
         setSubareas(fetchedSubareas)
         setUsers(fetchedUsers)
+        setLevels(fetchedLevels)
       } catch (error) {
         toast({
           title: 'Erro',
@@ -102,15 +109,38 @@ export default function Reports() {
 
       if (userId !== '_all_' && count.user_id !== userId) return false
 
-      const productSubarea = product?.expand?.subarea_id
+      const subarea = count.expand?.subarea_id
       if (areaId !== '_all_') {
-        if (productSubarea?.expand?.area_id?.id !== areaId) return false
+        if (subarea?.expand?.area_id?.id !== areaId) return false
       }
-      if (subareaId !== '_all_' && productSubarea?.id !== subareaId) return false
+      if (subareaId !== '_all_' && subarea?.id !== subareaId) return false
 
       return true
     })
   }, [counts, searchQuery, startDate, endDate, userId, areaId, subareaId])
+
+  const summaryByProduct = useMemo(() => {
+    const map = new Map<string, { name: string; unit: string; category: string; total: number }>()
+    levels.forEach((l) => {
+      const pid = l.product_id
+      if (!map.has(pid)) {
+        map.set(pid, {
+          name: l.expand?.product_id?.name || 'Desconhecido',
+          unit: l.expand?.product_id?.unit || '',
+          category: l.expand?.product_id?.expand?.category_id?.name || 'Desconhecido',
+          total: 0,
+        })
+      }
+      const item = map.get(pid)!
+      item.total += l.quantity
+    })
+
+    let arr = Array.from(map.values())
+    if (searchQuery) {
+      arr = arr.filter((i) => i.name.toLowerCase().includes(searchQuery.toLowerCase()))
+    }
+    return arr.sort((a, b) => a.name.localeCompare(b.name))
+  }, [levels, searchQuery])
 
   const totalItems = filteredCounts.length
   const discrepancies = filteredCounts.filter(
@@ -138,289 +168,360 @@ export default function Reports() {
     <div className="container max-w-6xl mx-auto px-4 py-6 w-full space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex flex-col mb-2">
         <h1 className="text-2xl font-bold font-serif text-emerald-900 tracking-tight">
-          Histórico de Contagens
+          Relatórios
         </h1>
         <p className="text-sm text-zinc-500 mt-1">
-          Acompanhe as métricas de uso e consumo do estoque e identifique divergências.
+          Acompanhe o estoque consolidado e histórico de contagens.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <Card className="bg-white shadow-sm border-zinc-200">
-          <CardContent className="p-6 flex items-center gap-4">
-            <div className="bg-emerald-100 p-3 rounded-full text-emerald-700">
-              <CheckCircle2 className="w-6 h-6" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-zinc-500">Total de Registros (Período)</p>
-              <p className="text-3xl font-bold text-zinc-900">{totalItems}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-white shadow-sm border-zinc-200">
-          <CardContent className="p-6 flex items-center gap-4">
-            <div className="bg-amber-100 p-3 rounded-full text-amber-700">
-              <AlertTriangle className="w-6 h-6" />
-            </div>
-            <div>
-              <p className="text-sm font-medium text-zinc-500">Com Discrepâncias</p>
-              <p className="text-3xl font-bold text-amber-600">{discrepancies}</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <Tabs defaultValue="history" className="w-full">
+        <TabsList className="grid w-full grid-cols-2 max-w-[400px] mb-6">
+          <TabsTrigger value="history" className="flex items-center gap-2">
+            <History className="w-4 h-4" /> Histórico
+          </TabsTrigger>
+          <TabsTrigger value="summary" className="flex items-center gap-2">
+            <ListOrdered className="w-4 h-4" /> Estoque Atual
+          </TabsTrigger>
+        </TabsList>
 
-      <Card className="shadow-sm border-zinc-200">
-        <CardContent className="p-4 space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
-            <div className="space-y-1.5 lg:col-span-2">
-              <Label>Período</Label>
-              <div className="flex items-center gap-2">
-                <Input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="w-full text-sm"
-                />
-                <span className="text-zinc-400">até</span>
-                <Input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="w-full text-sm"
-                />
+        <TabsContent value="history" className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Card className="bg-white shadow-sm border-zinc-200">
+              <CardContent className="p-6 flex items-center gap-4">
+                <div className="bg-emerald-100 p-3 rounded-full text-emerald-700">
+                  <CheckCircle2 className="w-6 h-6" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-zinc-500">Total de Registros (Período)</p>
+                  <p className="text-3xl font-bold text-zinc-900">{totalItems}</p>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="bg-white shadow-sm border-zinc-200">
+              <CardContent className="p-6 flex items-center gap-4">
+                <div className="bg-amber-100 p-3 rounded-full text-amber-700">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-zinc-500">Com Discrepâncias</p>
+                  <p className="text-3xl font-bold text-amber-600">{discrepancies}</p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card className="shadow-sm border-zinc-200">
+            <CardContent className="p-4 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
+                <div className="space-y-1.5 lg:col-span-2">
+                  <Label>Período</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="w-full text-sm"
+                    />
+                    <span className="text-zinc-400">até</span>
+                    <Input
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      className="w-full text-sm"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Funcionário</Label>
+                  <Select value={userId} onValueChange={setUserId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Todos" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_all_">Todos</SelectItem>
+                      {users.map((u) => (
+                        <SelectItem key={u.id} value={u.id}>
+                          {u.name || u.email}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Área</Label>
+                  <Select
+                    value={areaId}
+                    onValueChange={(val) => {
+                      setAreaId(val)
+                      setSubareaId('_all_')
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Todas" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_all_">Todas</SelectItem>
+                      {areas.map((a) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Subárea</Label>
+                  <Select
+                    value={subareaId}
+                    onValueChange={setSubareaId}
+                    disabled={areaId === '_all_'}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Todas" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_all_">Todas</SelectItem>
+                      {subareas
+                        .filter((s) => s.area_id === areaId)
+                        .map((s) => (
+                          <SelectItem key={s.id} value={s.id}>
+                            {s.name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Funcionário</Label>
-              <Select value={userId} onValueChange={setUserId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Todos" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_all_">Todos</SelectItem>
-                  {users.map((u) => (
-                    <SelectItem key={u.id} value={u.id}>
-                      {u.name || u.email}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Área</Label>
-              <Select
-                value={areaId}
-                onValueChange={(val) => {
-                  setAreaId(val)
-                  setSubareaId('_all_')
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Todas" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_all_">Todas</SelectItem>
-                  {areas.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>
-                      {a.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Subárea</Label>
-              <Select value={subareaId} onValueChange={setSubareaId} disabled={areaId === '_all_'}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Todas" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_all_">Todas</SelectItem>
-                  {subareas
-                    .filter((s) => s.area_id === areaId)
-                    .map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.name}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
 
-          <div className="flex items-center justify-between gap-4 border-t border-zinc-100 pt-4 mt-2">
-            <div className="relative flex-1 max-w-sm">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-zinc-400" />
-              <Input
-                type="text"
-                placeholder="Buscar por produto..."
-                className="pl-9"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-            <Button variant="outline" size="sm" onClick={clearFilters}>
-              <FilterX className="h-4 w-4 mr-2" /> Limpar
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+              <div className="flex items-center justify-between gap-4 border-t border-zinc-100 pt-4 mt-2">
+                <div className="relative flex-1 max-w-sm">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-zinc-400" />
+                  <Input
+                    type="text"
+                    placeholder="Buscar por produto..."
+                    className="pl-9"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </div>
+                <Button variant="outline" size="sm" onClick={clearFilters}>
+                  <FilterX className="h-4 w-4 mr-2" /> Limpar
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
 
-      <div className="bg-white rounded-lg border border-zinc-200 shadow-sm overflow-hidden">
-        {/* Desktop Table */}
-        <div className="hidden md:block overflow-x-auto">
-          <Table>
-            <TableHeader className="bg-zinc-50">
-              <TableRow>
-                <TableHead>Data/Hora</TableHead>
-                <TableHead>Produto</TableHead>
-                <TableHead>Local</TableHead>
-                <TableHead>Funcionário</TableHead>
-                <TableHead className="text-right">Qtd. Esperada</TableHead>
-                <TableHead className="text-right">Qtd. Real</TableHead>
-                <TableHead className="text-center">Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
+          <div className="bg-white rounded-lg border border-zinc-200 shadow-sm overflow-hidden">
+            {/* Desktop Table */}
+            <div className="hidden md:block overflow-x-auto">
+              <Table>
+                <TableHeader className="bg-zinc-50">
+                  <TableRow>
+                    <TableHead>Data/Hora</TableHead>
+                    <TableHead>Produto</TableHead>
+                    <TableHead>Local</TableHead>
+                    <TableHead>Funcionário</TableHead>
+                    <TableHead className="text-right">Qtd. Esperada</TableHead>
+                    <TableHead className="text-right">Qtd. Real</TableHead>
+                    <TableHead className="text-center">Status</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredCounts.map((count) => {
+                    const product = count.expand?.product_id
+                    const user = count.expand?.user_id
+                    const subarea = count.expand?.subarea_id
+                    const area = subarea?.expand?.area_id
+                    const hasDiscrepancy = count.previous_quantity !== count.counted_quantity
+
+                    return (
+                      <TableRow key={count.id}>
+                        <TableCell className="text-zinc-500 whitespace-nowrap">
+                          {format(safeDate(count.created), 'dd/MM/yyyy HH:mm')}
+                        </TableCell>
+                        <TableCell className="font-medium text-zinc-900">
+                          {product?.name}
+                          <span className="text-xs text-zinc-500 ml-1">({product?.unit})</span>
+                        </TableCell>
+                        <TableCell className="text-zinc-600">
+                          <div className="flex flex-col">
+                            <span>{area?.name}</span>
+                            <span className="text-xs text-zinc-400">{subarea?.name}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-zinc-600">{user?.name || user?.email}</TableCell>
+                        <TableCell className="text-right text-zinc-600">
+                          {count.previous_quantity}
+                        </TableCell>
+                        <TableCell
+                          className={cn(
+                            'text-right font-bold',
+                            hasDiscrepancy ? 'text-amber-600' : 'text-emerald-600',
+                          )}
+                        >
+                          {count.counted_quantity}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {hasDiscrepancy ? (
+                            <Badge
+                              variant="outline"
+                              className="bg-amber-50 text-amber-700 border-amber-200"
+                            >
+                              Divergente
+                            </Badge>
+                          ) : (
+                            <Badge
+                              variant="outline"
+                              className="bg-emerald-50 text-emerald-700 border-emerald-200"
+                            >
+                              Correto
+                            </Badge>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                  {filteredCounts.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={7} className="h-24 text-center text-zinc-500">
+                        Nenhum registro encontrado com os filtros atuais.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+
+            {/* Mobile Cards */}
+            <div className="md:hidden divide-y divide-zinc-100">
               {filteredCounts.map((count) => {
                 const product = count.expand?.product_id
                 const user = count.expand?.user_id
-                const subarea = product?.expand?.subarea_id
+                const subarea = count.expand?.subarea_id
                 const area = subarea?.expand?.area_id
                 const hasDiscrepancy = count.previous_quantity !== count.counted_quantity
 
                 return (
-                  <TableRow key={count.id}>
-                    <TableCell className="text-zinc-500 whitespace-nowrap">
-                      {format(safeDate(count.created), 'dd/MM/yyyy HH:mm')}
-                    </TableCell>
-                    <TableCell className="font-medium text-zinc-900">
-                      {product?.name}
-                      <span className="text-xs text-zinc-500 ml-1">({product?.unit})</span>
-                    </TableCell>
-                    <TableCell className="text-zinc-600">
-                      <div className="flex flex-col">
-                        <span>{area?.name}</span>
-                        <span className="text-xs text-zinc-400">{subarea?.name}</span>
+                  <div key={count.id} className="p-4 flex flex-col gap-3">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h3 className="font-bold text-zinc-900">{product?.name}</h3>
+                        <p className="text-xs text-zinc-500">
+                          {area?.name} • {subarea?.name}
+                        </p>
                       </div>
-                    </TableCell>
-                    <TableCell className="text-zinc-600">{user?.name || user?.email}</TableCell>
-                    <TableCell className="text-right text-zinc-600">
-                      {count.previous_quantity}
-                    </TableCell>
-                    <TableCell
-                      className={cn(
-                        'text-right font-bold',
-                        hasDiscrepancy ? 'text-amber-600' : 'text-emerald-600',
-                      )}
-                    >
-                      {count.counted_quantity}
-                    </TableCell>
-                    <TableCell className="text-center">
                       {hasDiscrepancy ? (
                         <Badge
                           variant="outline"
-                          className="bg-amber-50 text-amber-700 border-amber-200"
+                          className="bg-amber-50 text-amber-700 border-amber-200 whitespace-nowrap"
                         >
                           Divergente
                         </Badge>
                       ) : (
                         <Badge
                           variant="outline"
-                          className="bg-emerald-50 text-emerald-700 border-emerald-200"
+                          className="bg-emerald-50 text-emerald-700 border-emerald-200 whitespace-nowrap"
                         >
                           Correto
                         </Badge>
                       )}
-                    </TableCell>
-                  </TableRow>
+                    </div>
+
+                    <div className="flex justify-between items-center text-sm p-3 bg-zinc-50 rounded-md">
+                      <div className="flex flex-col">
+                        <span className="text-zinc-500 text-xs">Esperado ({product?.unit})</span>
+                        <span className="font-medium text-zinc-700">{count.previous_quantity}</span>
+                      </div>
+                      <span className="text-zinc-300">→</span>
+                      <div className="flex flex-col text-right">
+                        <span className="text-zinc-500 text-xs">Real ({product?.unit})</span>
+                        <span
+                          className={cn(
+                            'font-bold',
+                            hasDiscrepancy ? 'text-amber-600' : 'text-emerald-600',
+                          )}
+                        >
+                          {count.counted_quantity}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between items-center text-xs text-zinc-500 mt-1">
+                      <span className="flex items-center gap-1">
+                        <CalendarIcon className="w-3.5 h-3.5" />{' '}
+                        {format(safeDate(count.created), 'dd/MM/yyyy HH:mm')}
+                      </span>
+                      <span>
+                        Por: <span className="font-medium">{user?.name || user?.email}</span>
+                      </span>
+                    </div>
+                  </div>
                 )
               })}
               {filteredCounts.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center text-zinc-500">
-                    Nenhum registro encontrado com os filtros atuais.
-                  </TableCell>
-                </TableRow>
+                <div className="p-8 text-center text-zinc-500">Nenhum registro encontrado.</div>
               )}
-            </TableBody>
-          </Table>
-        </div>
-
-        {/* Mobile Cards */}
-        <div className="md:hidden divide-y divide-zinc-100">
-          {filteredCounts.map((count) => {
-            const product = count.expand?.product_id
-            const user = count.expand?.user_id
-            const subarea = product?.expand?.subarea_id
-            const area = subarea?.expand?.area_id
-            const hasDiscrepancy = count.previous_quantity !== count.counted_quantity
-
-            return (
-              <div key={count.id} className="p-4 flex flex-col gap-3">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h3 className="font-bold text-zinc-900">{product?.name}</h3>
-                    <p className="text-xs text-zinc-500">
-                      {area?.name} • {subarea?.name}
-                    </p>
-                  </div>
-                  {hasDiscrepancy ? (
-                    <Badge
-                      variant="outline"
-                      className="bg-amber-50 text-amber-700 border-amber-200 whitespace-nowrap"
-                    >
-                      Divergente
-                    </Badge>
-                  ) : (
-                    <Badge
-                      variant="outline"
-                      className="bg-emerald-50 text-emerald-700 border-emerald-200 whitespace-nowrap"
-                    >
-                      Correto
-                    </Badge>
-                  )}
-                </div>
-
-                <div className="flex justify-between items-center text-sm p-3 bg-zinc-50 rounded-md">
-                  <div className="flex flex-col">
-                    <span className="text-zinc-500 text-xs">Esperado ({product?.unit})</span>
-                    <span className="font-medium text-zinc-700">{count.previous_quantity}</span>
-                  </div>
-                  <span className="text-zinc-300">→</span>
-                  <div className="flex flex-col text-right">
-                    <span className="text-zinc-500 text-xs">Real ({product?.unit})</span>
-                    <span
-                      className={cn(
-                        'font-bold',
-                        hasDiscrepancy ? 'text-amber-600' : 'text-emerald-600',
-                      )}
-                    >
-                      {count.counted_quantity}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex justify-between items-center text-xs text-zinc-500 mt-1">
-                  <span className="flex items-center gap-1">
-                    <CalendarIcon className="w-3.5 h-3.5" />{' '}
-                    {format(safeDate(count.created), 'dd/MM/yyyy HH:mm')}
-                  </span>
-                  <span>
-                    Por: <span className="font-medium">{user?.name || user?.email}</span>
-                  </span>
-                </div>
-              </div>
-            )
-          })}
-          {filteredCounts.length === 0 && (
-            <div className="p-8 text-center text-zinc-500">
-              Nenhum registro encontrado com os filtros atuais.
             </div>
-          )}
-        </div>
-      </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="summary" className="space-y-6">
+          <Card className="shadow-sm border-zinc-200">
+            <CardContent className="p-4">
+              <div className="relative max-w-sm">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-zinc-400" />
+                <Input
+                  type="text"
+                  placeholder="Buscar por produto..."
+                  className="pl-9"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="bg-white rounded-lg border border-zinc-200 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader className="bg-zinc-50">
+                  <TableRow>
+                    <TableHead>Produto</TableHead>
+                    <TableHead>Categoria</TableHead>
+                    <TableHead className="text-right">Quantidade Total</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {summaryByProduct.map((item, index) => (
+                    <TableRow key={index}>
+                      <TableCell className="font-medium text-zinc-900">
+                        {item.name}
+                        <span className="text-xs text-zinc-500 ml-1">({item.unit})</span>
+                      </TableCell>
+                      <TableCell className="text-zinc-600">
+                        <Badge variant="outline" className="text-xs">
+                          {item.category}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right font-bold text-emerald-700">
+                        {item.total}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {summaryByProduct.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={3} className="h-24 text-center text-zinc-500">
+                        Nenhum produto encontrado.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-02T02:38:07.335Z",
+  "generatedAt": "2026-06-02T03:00:12.915Z",
   "collections": [
     {
       "name": "users",
@@ -216,13 +216,6 @@
           "collectionRef": "categories"
         },
         {
-          "name": "subarea_id",
-          "type": "relation",
-          "required": true,
-          "system": false,
-          "collectionRef": "subareas"
-        },
-        {
           "name": "created",
           "type": "autodate",
           "required": false,
@@ -289,9 +282,66 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "subarea_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "subareas"
         }
       ],
       "indexes": []
+    },
+    {
+      "name": "inventory_levels",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'manager')",
+        "update": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'manager')",
+        "delete": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'manager')"
+      },
+      "fields": [
+        {
+          "name": "product_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "products"
+        },
+        {
+          "name": "subarea_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "subareas"
+        },
+        {
+          "name": "quantity",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_inv_levels_prod_sub ON inventory_levels (product_id, subarea_id)"
+      ]
     }
   ]
 }

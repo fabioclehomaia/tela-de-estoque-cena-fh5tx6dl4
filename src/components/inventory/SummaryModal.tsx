@@ -1,4 +1,4 @@
-import { Product } from '@/lib/inventory-data'
+import { CountableItem } from '@/lib/inventory-data'
 import {
   Dialog,
   DialogContent,
@@ -14,15 +14,13 @@ interface SummaryModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   area: string
-  products: Product[]
+  items: CountableItem[]
   onConfirm: () => void
 }
 
-export function SummaryModal({ open, onOpenChange, area, products, onConfirm }: SummaryModalProps) {
-  const uncounted = products.filter((p) => p.actualQty === null)
-  const discrepancies = products.filter(
-    (p) => p.actualQty !== null && p.actualQty !== p.expectedQty,
-  )
+export function SummaryModal({ open, onOpenChange, area, items, onConfirm }: SummaryModalProps) {
+  const uncounted = items.filter((p) => p.actualQty === null)
+  const discrepancies = items.filter((p) => p.actualQty !== null && p.actualQty !== p.expectedQty)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -44,7 +42,9 @@ export function SummaryModal({ open, onOpenChange, area, products, onConfirm }: 
               </h4>
               <ul className="text-sm text-zinc-600 space-y-1.5">
                 {uncounted.map((p) => (
-                  <li key={p.id}>• {p.name}</li>
+                  <li key={p.id}>
+                    • {p.name} <span className="text-xs text-zinc-400">({p.subareaName})</span>
+                  </li>
                 ))}
               </ul>
             </div>
@@ -61,7 +61,10 @@ export function SummaryModal({ open, onOpenChange, area, products, onConfirm }: 
                     key={p.id}
                     className="flex justify-between items-center text-sm border-b border-zinc-100 pb-2 last:border-0"
                   >
-                    <span className="font-medium text-zinc-700 truncate pr-2">{p.name}</span>
+                    <div className="flex flex-col pr-2">
+                      <span className="font-medium text-zinc-700 truncate">{p.name}</span>
+                      <span className="text-xs text-zinc-400 truncate">{p.subareaName}</span>
+                    </div>
                     <div className="flex items-center gap-2 text-xs whitespace-nowrap bg-zinc-50 px-2 py-1 rounded">
                       <span className="text-zinc-500">Esp: {p.expectedQty}</span>
                       <span className="text-zinc-300">→</span>

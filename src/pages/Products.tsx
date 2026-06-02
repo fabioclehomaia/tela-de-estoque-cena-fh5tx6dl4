@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Plus, Edit, Trash2, PackageSearch } from 'lucide-react'
+import { Plus, Edit, Trash2, PackageSearch, Layers } from 'lucide-react'
 import {
   getProducts,
   createProduct,
@@ -10,7 +11,7 @@ import {
   deleteProduct,
   Product,
 } from '@/services/products'
-import { getCategories, getSubareas, Category, Subarea } from '@/services/inventory'
+import { getCategories, Category } from '@/services/inventory'
 import { useRealtime } from '@/hooks/use-realtime'
 import { extractFieldErrors } from '@/lib/pocketbase/errors'
 import { toast } from 'sonner'
@@ -52,13 +53,11 @@ const schema = z.object({
     .transform((v) => (v ? Number(v) : null))
     .optional(),
   category_id: z.string().min(1, 'Selecione a categoria'),
-  subarea_id: z.string().min(1, 'Selecione a subárea'),
 })
 
 export default function Products() {
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
-  const [subareas, setSubareas] = useState<Subarea[]>([])
   const [isOpen, setIsOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
 
@@ -70,15 +69,14 @@ export default function Products() {
       validity_days: undefined as any,
       min_stock: undefined as any,
       category_id: '',
-      subarea_id: '',
     },
   })
 
   const loadData = async () => {
     setProducts(await getProducts())
     setCategories(await getCategories())
-    setSubareas(await getSubareas())
   }
+
   useEffect(() => {
     loadData()
   }, [])
@@ -104,7 +102,6 @@ export default function Products() {
       validity_days: p.validity_days?.toString() as any,
       min_stock: p.min_stock?.toString() as any,
       category_id: p.category_id,
-      subarea_id: p.subarea_id,
     })
     setIsOpen(true)
   }
@@ -119,7 +116,6 @@ export default function Products() {
         validity_days: undefined as any,
         min_stock: undefined as any,
         category_id: '',
-        subarea_id: '',
       })
     }
   }
@@ -138,33 +134,43 @@ export default function Products() {
     <div className="p-4 md:p-8 max-w-4xl mx-auto w-full flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold font-serif text-emerald-900">Produtos</h1>
-        <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-          <DialogTrigger asChild>
-            <Button className="bg-emerald-600 hover:bg-emerald-700">
-              <Plus className="w-4 h-4 md:mr-2" />
-              <span className="hidden md:inline">Novo Produto</span>
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[425px] max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>{editingId ? 'Editar Produto' : 'Novo Produto'}</DialogTitle>
-            </DialogHeader>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="name"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Nome</FormLabel>
-                      <FormControl>
-                        <Input {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <div className="grid grid-cols-2 gap-4">
+        <div className="flex gap-2">
+          <Button
+            asChild
+            variant="outline"
+            className="text-emerald-700 border-emerald-200 hover:bg-emerald-50 hidden sm:flex"
+          >
+            <Link to="/inventory-levels">
+              <Layers className="w-4 h-4 mr-2" />
+              Vincular a Subáreas
+            </Link>
+          </Button>
+          <Dialog open={isOpen} onOpenChange={handleOpenChange}>
+            <DialogTrigger asChild>
+              <Button className="bg-emerald-600 hover:bg-emerald-700">
+                <Plus className="w-4 h-4 md:mr-2" />
+                <span className="hidden md:inline">Novo Produto</span>
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[425px] max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>{editingId ? 'Editar Produto' : 'Novo Produto'}</DialogTitle>
+              </DialogHeader>
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Nome</FormLabel>
+                        <FormControl>
+                          <Input {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                   <FormField
                     control={form.control}
                     name="category_id"
@@ -189,89 +195,78 @@ export default function Products() {
                       </FormItem>
                     )}
                   />
-                  <FormField
-                    control={form.control}
-                    name="subarea_id"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Subárea</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
+                  <div className="grid grid-cols-3 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="unit"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Unidade</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Uni" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="kg">Kg</SelectItem>
+                              <SelectItem value="litro">Litro</SelectItem>
+                              <SelectItem value="unidade">Unid</SelectItem>
+                              <SelectItem value="caixa">Caixa</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="validity_days"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Validade (dias)</FormLabel>
                           <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Selecione" />
-                            </SelectTrigger>
+                            <Input type="number" {...field} value={field.value ?? ''} />
                           </FormControl>
-                          <SelectContent>
-                            {subareas.map((s) => (
-                              <SelectItem key={s.id} value={s.id}>
-                                {s.name} ({s.expand?.area_id?.name})
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                <div className="grid grid-cols-3 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="unit"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Unidade</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="min_stock"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Estoque Min</FormLabel>
                           <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Uni" />
-                            </SelectTrigger>
+                            <Input type="number" {...field} value={field.value ?? ''} />
                           </FormControl>
-                          <SelectContent>
-                            <SelectItem value="kg">Kg</SelectItem>
-                            <SelectItem value="litro">Litro</SelectItem>
-                            <SelectItem value="unidade">Unid</SelectItem>
-                            <SelectItem value="caixa">Caixa</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="validity_days"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Validade (dias)</FormLabel>
-                        <FormControl>
-                          <Input type="number" {...field} value={field.value ?? ''} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="min_stock"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Estoque Min</FormLabel>
-                        <FormControl>
-                          <Input type="number" {...field} value={field.value ?? ''} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                <Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700">
-                  Salvar
-                </Button>
-              </form>
-            </Form>
-          </DialogContent>
-        </Dialog>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700">
+                    Salvar
+                  </Button>
+                </form>
+              </Form>
+            </DialogContent>
+          </Dialog>
+        </div>
+      </div>
+
+      <div className="sm:hidden mb-2">
+        <Button
+          asChild
+          variant="outline"
+          className="w-full text-emerald-700 border-emerald-200 hover:bg-emerald-50"
+        >
+          <Link to="/inventory-levels">
+            <Layers className="w-4 h-4 mr-2" />
+            Vincular a Subáreas
+          </Link>
+        </Button>
       </div>
 
       <div className="grid gap-3">
@@ -287,9 +282,6 @@ export default function Products() {
               <div className="flex gap-2">
                 <Badge variant="outline" className="text-[10px] text-zinc-600 border-zinc-200">
                   {p.expand?.category_id?.name}
-                </Badge>
-                <Badge variant="secondary" className="text-[10px] bg-emerald-50 text-emerald-700">
-                  {p.expand?.subarea_id?.name}
                 </Badge>
               </div>
             </div>

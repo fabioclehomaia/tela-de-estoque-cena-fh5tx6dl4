@@ -1,35 +1,37 @@
 import { useState, useEffect } from 'react'
-import { Product } from '@/lib/inventory-data'
+import { CountableItem } from '@/lib/inventory-data'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { AlertTriangle, Clock } from 'lucide-react'
+import { AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface ProductCardProps {
-  product: Product
+  item: CountableItem
   onUpdate: (id: string, qty: number | null) => void
   disabled?: boolean
 }
 
-export function ProductCard({ product, onUpdate, disabled }: ProductCardProps) {
-  const [localVal, setLocalVal] = useState(product.actualQty?.toString() ?? '')
+export function ProductCard({ item, onUpdate, disabled }: ProductCardProps) {
+  const [localVal, setLocalVal] = useState(item.actualQty?.toString() ?? '')
 
   useEffect(() => {
-    if (product.actualQty === null) {
+    if (item.actualQty === null) {
       setLocalVal('')
     }
-  }, [product.actualQty])
+  }, [item.actualQty])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value
     setLocalVal(val)
 
     if (val === '') {
-      onUpdate(product.id, null)
+      onUpdate(item.id, null)
     } else if (!isNaN(Number(val))) {
-      onUpdate(product.id, Number(val))
+      onUpdate(item.id, Number(val))
     }
   }
+
+  const isLowStock = item.minStock !== null && item.expectedQty < item.minStock
 
   return (
     <div
@@ -39,32 +41,22 @@ export function ProductCard({ product, onUpdate, disabled }: ProductCardProps) {
       )}
     >
       <div className="flex flex-col gap-1.5 flex-1 pr-4">
-        <span className="font-semibold text-zinc-900 leading-tight">{product.name}</span>
+        <span className="font-semibold text-zinc-900 leading-tight">{item.name}</span>
         <div className="text-sm text-zinc-500">
-          Estoque:{' '}
-          <span className="font-medium">
-            {product.expectedQty} {product.unit}
+          Estoque Esperado:{' '}
+          <span className="font-medium text-zinc-900">
+            {item.expectedQty} {item.unit}
           </span>
         </div>
 
-        {(product.status === 'low_stock' || product.status === 'near_expiry') && (
+        {isLowStock && (
           <div className="flex flex-wrap gap-2 mt-1">
-            {product.status === 'low_stock' && (
-              <Badge
-                variant="outline"
-                className="text-amber-700 border-amber-200 bg-amber-50 gap-1 px-1.5 font-medium"
-              >
-                <AlertTriangle className="w-3 h-3" /> Baixo
-              </Badge>
-            )}
-            {product.status === 'near_expiry' && (
-              <Badge
-                variant="outline"
-                className="text-red-700 border-red-200 bg-red-50 gap-1 px-1.5 font-medium"
-              >
-                <Clock className="w-3 h-3" /> Próx. Venc.
-              </Badge>
-            )}
+            <Badge
+              variant="outline"
+              className="text-amber-700 border-amber-200 bg-amber-50 gap-1 px-1.5 font-medium text-[10px] py-0.5"
+            >
+              <AlertTriangle className="w-3 h-3" /> Estoque Baixo
+            </Badge>
           </div>
         )}
       </div>

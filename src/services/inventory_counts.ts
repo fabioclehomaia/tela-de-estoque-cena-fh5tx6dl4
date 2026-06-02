@@ -3,6 +3,7 @@ import pb from '@/lib/pocketbase/client'
 export interface InventoryCount {
   id: string
   product_id: string
+  subarea_id: string
   user_id: string
   previous_quantity: number
   counted_quantity: number
@@ -13,16 +14,15 @@ export interface InventoryCount {
       id: string
       name: string
       unit: string
+      category_id: string
+    }
+    subarea_id: {
+      id: string
+      name: string
       expand?: {
-        subarea_id: {
+        area_id: {
           id: string
           name: string
-          expand?: {
-            area_id: {
-              id: string
-              name: string
-            }
-          }
         }
       }
     }
@@ -37,7 +37,7 @@ export interface InventoryCount {
 export const getInventoryCounts = async (filter: string = '') => {
   return pb.collection('inventory_counts').getFullList<InventoryCount>({
     sort: '-created',
-    expand: 'product_id.subarea_id.area_id,user_id',
+    expand: 'product_id,subarea_id.area_id,user_id',
     filter,
   })
 }
