@@ -11,7 +11,7 @@ import Areas from './pages/Areas'
 import Subareas from './pages/Subareas'
 import Categories from './pages/Categories'
 import Products from './pages/Products'
-import InventoryLevels from './pages/InventoryLevels'
+
 import Reports from './pages/Reports'
 import { AuthProvider } from './hooks/use-auth'
 import { ProtectedRoute } from './components/ProtectedRoute'
@@ -38,7 +38,7 @@ const App = () => (
                 <Route path="/subareas" element={<Subareas />} />
                 <Route path="/categories" element={<Categories />} />
                 <Route path="/products" element={<Products />} />
-                <Route path="/inventory-levels" element={<InventoryLevels />} />
+
                 <Route path="/reports" element={<Reports />} />
               </Route>
             </Route>

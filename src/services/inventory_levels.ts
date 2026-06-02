@@ -16,12 +16,10 @@ export interface InventoryLevel {
 }
 
 export const getInventoryLevels = () =>
-  pb
-    .collection('inventory_levels')
-    .getFullList<InventoryLevel>({
-      expand: 'product_id.category_id,subarea_id.area_id',
-      sort: 'subarea_id',
-    })
+  pb.collection('inventory_levels').getFullList<InventoryLevel>({
+    expand: 'product_id.category_id,subarea_id.area_id',
+    sort: 'subarea_id',
+  })
 
 export const createInventoryLevel = (data: Partial<InventoryLevel>) =>
   pb.collection('inventory_levels').create<InventoryLevel>(data)
