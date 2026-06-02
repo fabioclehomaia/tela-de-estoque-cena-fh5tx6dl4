@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-02T02:18:13.432Z",
+  "generatedAt": "2026-06-02T02:38:07.335Z",
   "collections": [
     {
       "name": "users",
@@ -221,6 +221,60 @@
           "required": true,
           "system": false,
           "collectionRef": "subareas"
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": []
+    },
+    {
+      "name": "inventory_counts",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'manager')",
+        "view": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'manager')",
+        "create": "@request.auth.id != ''",
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "product_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "products"
+        },
+        {
+          "name": "user_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "previous_quantity",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "counted_quantity",
+          "type": "number",
+          "required": true,
+          "system": false
         },
         {
           "name": "created",
