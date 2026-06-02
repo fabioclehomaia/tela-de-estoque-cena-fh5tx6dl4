@@ -7,6 +7,9 @@ import NotFound from './pages/NotFound'
 import Layout from './components/Layout'
 import Login from './pages/Login'
 import Users from './pages/Users'
+import Areas from './pages/Areas'
+import Subareas from './pages/Subareas'
+import Categories from './pages/Categories'
 import Products from './pages/Products'
 import Reports from './pages/Reports'
 import { AuthProvider } from './hooks/use-auth'
@@ -30,6 +33,9 @@ const App = () => (
               </Route>
 
               <Route element={<ProtectedRoute allowedRoles={['admin', 'manager']} />}>
+                <Route path="/areas" element={<Areas />} />
+                <Route path="/subareas" element={<Subareas />} />
+                <Route path="/categories" element={<Categories />} />
                 <Route path="/products" element={<Products />} />
                 <Route path="/reports" element={<Reports />} />
               </Route>

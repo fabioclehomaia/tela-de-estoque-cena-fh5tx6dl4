@@ -1,5 +1,16 @@
 import { Link, Outlet, useLocation } from 'react-router-dom'
-import { Menu, LogOut, Package, FileText, Users, ClipboardList, UserCircle } from 'lucide-react'
+import {
+  Menu,
+  LogOut,
+  Package,
+  FileText,
+  Users,
+  ClipboardList,
+  UserCircle,
+  MapPin,
+  Map,
+  Tags,
+} from 'lucide-react'
 import {
   Sheet,
   SheetContent,
@@ -31,6 +42,9 @@ export default function Layout() {
       icon: ClipboardList,
       roles: ['admin', 'manager', 'employee'],
     },
+    { path: '/areas', label: 'Áreas', icon: MapPin, roles: ['admin', 'manager'] },
+    { path: '/subareas', label: 'Subáreas', icon: Map, roles: ['admin', 'manager'] },
+    { path: '/categories', label: 'Categorias', icon: Tags, roles: ['admin', 'manager'] },
     { path: '/products', label: 'Produtos', icon: Package, roles: ['admin', 'manager'] },
     { path: '/reports', label: 'Relatórios', icon: FileText, roles: ['admin', 'manager'] },
     { path: '/users', label: 'Usuários', icon: Users, roles: ['admin'] },
