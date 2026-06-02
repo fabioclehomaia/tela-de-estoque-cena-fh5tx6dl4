@@ -20,6 +20,13 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -35,6 +42,7 @@ import { getInventoryCounts, InventoryCount } from '@/services/inventory_counts'
 import { getInventoryLevels, InventoryLevel } from '@/services/inventory_levels'
 import { getAreas, getSubareas, Area, Subarea } from '@/services/inventory'
 import { getUsers, User } from '@/services/users'
+import { getProducts, Product } from '@/services/products'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 
@@ -47,6 +55,7 @@ export default function Reports() {
   const [areas, setAreas] = useState<Area[]>([])
   const [subareas, setSubareas] = useState<Subarea[]>([])
   const [users, setUsers] = useState<User[]>([])
+  const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
 
   const [startDate, setStartDate] = useState<string>('')
@@ -55,24 +64,33 @@ export default function Reports() {
   const [areaId, setAreaId] = useState<string>('_all_')
   const [subareaId, setSubareaId] = useState<string>('_all_')
   const [searchQuery, setSearchQuery] = useState('')
+  const [selectedProduct, setSelectedProduct] = useState<any>(null)
 
   useEffect(() => {
     const loadData = async () => {
       try {
         setLoading(true)
-        const [fetchedCounts, fetchedAreas, fetchedSubareas, fetchedUsers, fetchedLevels] =
-          await Promise.all([
-            getInventoryCounts(),
-            getAreas(),
-            getSubareas(),
-            getUsers(),
-            getInventoryLevels(),
-          ])
+        const [
+          fetchedCounts,
+          fetchedAreas,
+          fetchedSubareas,
+          fetchedUsers,
+          fetchedLevels,
+          fetchedProducts,
+        ] = await Promise.all([
+          getInventoryCounts(),
+          getAreas(),
+          getSubareas(),
+          getUsers(),
+          getInventoryLevels(),
+          getProducts(),
+        ])
         setCounts(fetchedCounts)
         setAreas(fetchedAreas)
         setSubareas(fetchedSubareas)
         setUsers(fetchedUsers)
         setLevels(fetchedLevels)
+        setProducts(fetchedProducts)
       } catch (error) {
         toast({
           title: 'Erro',
@@ -120,19 +138,39 @@ export default function Reports() {
   }, [counts, searchQuery, startDate, endDate, userId, areaId, subareaId])
 
   const summaryByProduct = useMemo(() => {
-    const map = new Map<string, { name: string; unit: string; category: string; total: number }>()
+    const map = new Map<
+      string,
+      {
+        id: string
+        name: string
+        unit: string
+        category: string
+        total: number
+        breakdown: { subarea: string; area: string; quantity: number }[]
+      }
+    >()
+
+    products.forEach((p) => {
+      map.set(p.id, {
+        id: p.id,
+        name: p.name,
+        unit: p.unit,
+        category: p.expand?.category_id?.name || 'Desconhecido',
+        total: 0,
+        breakdown: [],
+      })
+    })
+
     levels.forEach((l) => {
       const pid = l.product_id
-      if (!map.has(pid)) {
-        map.set(pid, {
-          name: l.expand?.product_id?.name || 'Desconhecido',
-          unit: l.expand?.product_id?.unit || '',
-          category: l.expand?.product_id?.expand?.category_id?.name || 'Desconhecido',
-          total: 0,
-        })
-      }
+      if (!map.has(pid)) return
       const item = map.get(pid)!
       item.total += l.quantity
+      item.breakdown.push({
+        subarea: l.expand?.subarea_id?.name || 'Desconhecida',
+        area: l.expand?.subarea_id?.expand?.area_id?.name || 'Desconhecida',
+        quantity: l.quantity,
+      })
     })
 
     let arr = Array.from(map.values())
@@ -140,7 +178,7 @@ export default function Reports() {
       arr = arr.filter((i) => i.name.toLowerCase().includes(searchQuery.toLowerCase()))
     }
     return arr.sort((a, b) => a.name.localeCompare(b.name))
-  }, [levels, searchQuery])
+  }, [levels, products, searchQuery])
 
   const totalItems = filteredCounts.length
   const discrepancies = filteredCounts.filter(
@@ -493,8 +531,12 @@ export default function Reports() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {summaryByProduct.map((item, index) => (
-                    <TableRow key={index}>
+                  {summaryByProduct.map((item) => (
+                    <TableRow
+                      key={item.id}
+                      className="cursor-pointer hover:bg-zinc-50"
+                      onClick={() => setSelectedProduct(item)}
+                    >
                       <TableCell className="font-medium text-zinc-900">
                         {item.name}
                         <span className="text-xs text-zinc-500 ml-1">({item.unit})</span>
@@ -522,6 +564,51 @@ export default function Reports() {
           </div>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={!!selectedProduct} onOpenChange={(open) => !open && setSelectedProduct(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{selectedProduct?.name}</DialogTitle>
+            <DialogDescription>Distribuição de estoque por subárea</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {selectedProduct?.breakdown.length === 0 ? (
+              <p className="text-sm text-zinc-500 text-center py-4">
+                Este produto não possui estoque vinculado a nenhuma subárea.
+              </p>
+            ) : (
+              <div className="rounded-md border border-zinc-200 overflow-hidden">
+                <Table>
+                  <TableHeader className="bg-zinc-50">
+                    <TableRow>
+                      <TableHead>Local</TableHead>
+                      <TableHead className="text-right">Quantidade</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {selectedProduct?.breakdown.map((b: any, i: number) => (
+                      <TableRow key={i}>
+                        <TableCell>
+                          <div className="flex flex-col">
+                            <span className="font-medium text-zinc-900">{b.area}</span>
+                            <span className="text-xs text-zinc-500">{b.subarea}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right font-medium">
+                          {b.quantity}{' '}
+                          <span className="text-xs text-zinc-500 font-normal">
+                            {selectedProduct.unit}
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
