@@ -43,6 +43,8 @@ import { getInventoryLevels, InventoryLevel } from '@/services/inventory_levels'
 import { getAreas, getSubareas, Area, Subarea } from '@/services/inventory'
 import { getUsers, User } from '@/services/users'
 import { getProducts, Product } from '@/services/products'
+import pb from '@/lib/pocketbase/client'
+import { ImageIcon } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 
@@ -155,6 +157,7 @@ export default function Reports() {
         id: p.id,
         name: p.name,
         unit: p.unit,
+        image: p.image,
         category: p.expand?.category_id?.name || 'Desconhecido',
         total: 0,
         breakdown: [],
@@ -379,8 +382,25 @@ export default function Reports() {
                           {format(safeDate(count.created), 'dd/MM/yyyy HH:mm')}
                         </TableCell>
                         <TableCell className="font-medium text-zinc-900">
-                          {product?.name}
-                          <span className="text-xs text-zinc-500 ml-1">({product?.unit})</span>
+                          <div className="flex items-center gap-3">
+                            {product?.image ? (
+                              <div className="w-8 h-8 rounded border border-zinc-200 overflow-hidden bg-zinc-50 shrink-0">
+                                <img
+                                  src={`${pb.baseUrl}/api/files/products/${product.id}/${product.image}?thumb=100x100`}
+                                  alt={product.name}
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                            ) : (
+                              <div className="w-8 h-8 rounded border border-zinc-200 bg-zinc-50 flex items-center justify-center shrink-0">
+                                <ImageIcon className="w-4 h-4 text-zinc-300" />
+                              </div>
+                            )}
+                            <div>
+                              {product?.name}
+                              <span className="text-xs text-zinc-500 ml-1">({product?.unit})</span>
+                            </div>
+                          </div>
                         </TableCell>
                         <TableCell className="text-zinc-600">
                           <div className="flex flex-col">
@@ -443,11 +463,26 @@ export default function Reports() {
                 return (
                   <div key={count.id} className="p-4 flex flex-col gap-3">
                     <div className="flex justify-between items-start">
-                      <div>
-                        <h3 className="font-bold text-zinc-900">{product?.name}</h3>
-                        <p className="text-xs text-zinc-500">
-                          {area?.name} • {subarea?.name}
-                        </p>
+                      <div className="flex gap-3 items-center">
+                        {product?.image ? (
+                          <div className="w-10 h-10 rounded border border-zinc-200 overflow-hidden bg-zinc-50 shrink-0">
+                            <img
+                              src={`${pb.baseUrl}/api/files/products/${product.id}/${product.image}?thumb=100x100`}
+                              alt={product.name}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                        ) : (
+                          <div className="w-10 h-10 rounded border border-zinc-200 bg-zinc-50 flex items-center justify-center shrink-0">
+                            <ImageIcon className="w-5 h-5 text-zinc-300" />
+                          </div>
+                        )}
+                        <div>
+                          <h3 className="font-bold text-zinc-900">{product?.name}</h3>
+                          <p className="text-xs text-zinc-500">
+                            {area?.name} • {subarea?.name}
+                          </p>
+                        </div>
                       </div>
                       {hasDiscrepancy ? (
                         <Badge
@@ -531,15 +566,32 @@ export default function Reports() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {summaryByProduct.map((item) => (
+                  {summaryByProduct.map((item: any) => (
                     <TableRow
                       key={item.id}
                       className="cursor-pointer hover:bg-zinc-50"
                       onClick={() => setSelectedProduct(item)}
                     >
                       <TableCell className="font-medium text-zinc-900">
-                        {item.name}
-                        <span className="text-xs text-zinc-500 ml-1">({item.unit})</span>
+                        <div className="flex items-center gap-3">
+                          {item.image ? (
+                            <div className="w-8 h-8 rounded border border-zinc-200 overflow-hidden bg-zinc-50 shrink-0">
+                              <img
+                                src={`${pb.baseUrl}/api/files/products/${item.id}/${item.image}?thumb=100x100`}
+                                alt={item.name}
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                          ) : (
+                            <div className="w-8 h-8 rounded border border-zinc-200 bg-zinc-50 flex items-center justify-center shrink-0">
+                              <ImageIcon className="w-4 h-4 text-zinc-300" />
+                            </div>
+                          )}
+                          <div>
+                            {item.name}
+                            <span className="text-xs text-zinc-500 ml-1">({item.unit})</span>
+                          </div>
+                        </div>
                       </TableCell>
                       <TableCell className="text-zinc-600">
                         <Badge variant="outline" className="text-xs">
@@ -568,7 +620,22 @@ export default function Reports() {
       <Dialog open={!!selectedProduct} onOpenChange={(open) => !open && setSelectedProduct(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{selectedProduct?.name}</DialogTitle>
+            <DialogTitle className="flex items-center gap-3">
+              {selectedProduct?.image ? (
+                <div className="w-10 h-10 rounded border border-zinc-200 overflow-hidden bg-zinc-50 shrink-0">
+                  <img
+                    src={`${pb.baseUrl}/api/files/products/${selectedProduct.id}/${selectedProduct.image}?thumb=100x100`}
+                    alt={selectedProduct.name}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              ) : (
+                <div className="w-10 h-10 rounded border border-zinc-200 bg-zinc-50 flex items-center justify-center shrink-0">
+                  <ImageIcon className="w-5 h-5 text-zinc-300" />
+                </div>
+              )}
+              {selectedProduct?.name}
+            </DialogTitle>
             <DialogDescription>Distribuição de estoque por subárea</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">

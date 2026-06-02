@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useForm, useFieldArray } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Plus, Edit, Trash2, PackageSearch, MapPin } from 'lucide-react'
+import { Plus, Edit, Trash2, PackageSearch, MapPin, ImageIcon } from 'lucide-react'
 import {
   getProducts,
   createProduct,
@@ -47,6 +47,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
+import { ImageUpload } from '@/components/ImageUpload'
+import pb from '@/lib/pocketbase/client'
 
 const locationSchema = z.object({
   subarea_id: z.string().min(1, 'Selecione'),
@@ -71,6 +73,7 @@ const schema = z
       .optional(),
     category_id: z.string().min(1, 'Selecione a categoria'),
     locations: z.array(locationSchema).optional().default([]),
+    image: z.any().optional(),
   })
   .superRefine((data, ctx) => {
     const ids = data.locations?.map((l) => l.subarea_id) || []
@@ -100,6 +103,7 @@ export default function Products() {
       min_stock: undefined as any,
       category_id: '',
       locations: [],
+      image: null,
     },
   })
 
@@ -129,19 +133,24 @@ export default function Products() {
 
   const onSubmit = async (data: z.infer<typeof schema>) => {
     try {
-      const productData = {
-        name: data.name,
-        unit: data.unit,
-        validity_days: data.validity_days,
-        min_stock: data.min_stock,
-        category_id: data.category_id,
-      } as any
+      const formData = new FormData()
+      formData.append('name', data.name)
+      formData.append('unit', data.unit)
+      if (data.validity_days) formData.append('validity_days', data.validity_days.toString())
+      if (data.min_stock) formData.append('min_stock', data.min_stock.toString())
+      formData.append('category_id', data.category_id)
+
+      if (data.image instanceof File) {
+        formData.append('image', data.image)
+      } else if (data.image === null) {
+        formData.append('image', '')
+      }
 
       let productId = editingId
       if (editingId) {
-        await updateProduct(editingId, productData)
+        await updateProduct(editingId, formData)
       } else {
-        const newProd = await createProduct(productData)
+        const newProd = await createProduct(formData)
         productId = newProd.id
       }
 
@@ -199,6 +208,7 @@ export default function Products() {
         quantity: l.quantity.toString() as any,
         existingLevelId: l.id,
       })) as any,
+      image: p.image || null,
     })
     setIsOpen(true)
   }
@@ -214,6 +224,7 @@ export default function Products() {
         min_stock: undefined as any,
         category_id: '',
         locations: [],
+        image: null,
       })
     }
   }
@@ -279,6 +290,24 @@ export default function Products() {
                             ))}
                           </SelectContent>
                         </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="image"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Imagem do Produto</FormLabel>
+                        <FormControl>
+                          <ImageUpload
+                            value={field.value}
+                            onChange={field.onChange}
+                            collectionId="products"
+                            recordId={editingId || undefined}
+                          />
+                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -452,29 +481,44 @@ export default function Products() {
             key={p.id}
             className="flex items-center justify-between p-4 bg-white border border-zinc-200 rounded-lg shadow-sm"
           >
-            <div className="flex flex-col gap-1">
-              <span className="font-medium text-zinc-900">
-                {p.name} <span className="text-xs text-zinc-500 ml-1">({p.unit})</span>
-              </span>
-              <div className="flex flex-wrap gap-2 mt-1">
-                <Badge variant="outline" className="text-[10px] text-zinc-600 border-zinc-200">
-                  {p.expand?.category_id?.name}
-                </Badge>
-                {levels
-                  .filter((l) => l.product_id === p.id)
-                  .map((l) => (
-                    <Badge
-                      key={l.id}
-                      variant="secondary"
-                      className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-100"
-                    >
-                      <MapPin className="w-2.5 h-2.5 mr-1" />
-                      {l.expand?.subarea_id?.name}: {l.quantity} {p.unit}
-                    </Badge>
-                  ))}
+            <div className="flex items-center gap-4">
+              {p.image ? (
+                <div className="w-16 h-16 rounded-md border border-zinc-200 overflow-hidden bg-zinc-50 shrink-0">
+                  <img
+                    src={`${pb.baseUrl}/api/files/products/${p.id}/${p.image}?thumb=100x100`}
+                    alt={p.name}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              ) : (
+                <div className="w-16 h-16 rounded-md border border-zinc-200 bg-zinc-50 flex items-center justify-center shrink-0">
+                  <ImageIcon className="w-6 h-6 text-zinc-300" />
+                </div>
+              )}
+              <div className="flex flex-col gap-1">
+                <span className="font-medium text-zinc-900">
+                  {p.name} <span className="text-xs text-zinc-500 ml-1">({p.unit})</span>
+                </span>
+                <div className="flex flex-wrap gap-2 mt-1">
+                  <Badge variant="outline" className="text-[10px] text-zinc-600 border-zinc-200">
+                    {p.expand?.category_id?.name}
+                  </Badge>
+                  {levels
+                    .filter((l) => l.product_id === p.id)
+                    .map((l) => (
+                      <Badge
+                        key={l.id}
+                        variant="secondary"
+                        className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-100"
+                      >
+                        <MapPin className="w-2.5 h-2.5 mr-1" />
+                        {l.expand?.subarea_id?.name}: {l.quantity} {p.unit}
+                      </Badge>
+                    ))}
+                </div>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               <Button size="icon" variant="ghost" onClick={() => handleEdit(p)}>
                 <Edit className="w-4 h-4 text-zinc-500" />
               </Button>

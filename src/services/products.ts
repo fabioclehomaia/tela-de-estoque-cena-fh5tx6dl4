@@ -8,6 +8,7 @@ export interface Product {
   validity_days?: number
   min_stock?: number
   category_id: string
+  image?: string
   created: string
   updated: string
   expand?: {
@@ -17,8 +18,8 @@ export interface Product {
 
 export const getProducts = () =>
   pb.collection('products').getFullList<Product>({ sort: 'name', expand: 'category_id' })
-export const createProduct = (data: Partial<Product>) =>
+export const createProduct = (data: Partial<Product> | FormData) =>
   pb.collection('products').create<Product>(data)
-export const updateProduct = (id: string, data: Partial<Product>) =>
+export const updateProduct = (id: string, data: Partial<Product> | FormData) =>
   pb.collection('products').update<Product>(id, data)
 export const deleteProduct = (id: string) => pb.collection('products').delete(id)
