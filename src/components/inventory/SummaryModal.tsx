@@ -20,7 +20,7 @@ interface SummaryModalProps {
 
 export function SummaryModal({ open, onOpenChange, area, items, onConfirm }: SummaryModalProps) {
   const uncounted = items.filter((p) => p.actualQty === null)
-  const discrepancies = items.filter((p) => p.actualQty !== null && p.actualQty !== p.expectedQty)
+  const counted = items.filter((p) => p.actualQty !== null)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -50,13 +50,13 @@ export function SummaryModal({ open, onOpenChange, area, items, onConfirm }: Sum
             </div>
           )}
 
-          {discrepancies.length > 0 && (
+          {counted.length > 0 && (
             <div className="mb-6">
               <h4 className="text-sm font-bold text-zinc-900 mb-3">
-                Discrepâncias ({discrepancies.length})
+                Itens Contados ({counted.length})
               </h4>
               <div className="space-y-3">
-                {discrepancies.map((p) => (
+                {counted.map((p) => (
                   <div
                     key={p.id}
                     className="flex justify-between items-center text-sm border-b border-zinc-100 pb-2 last:border-0"
@@ -66,17 +66,7 @@ export function SummaryModal({ open, onOpenChange, area, items, onConfirm }: Sum
                       <span className="text-xs text-zinc-400 truncate">{p.subareaName}</span>
                     </div>
                     <div className="flex items-center gap-2 text-xs whitespace-nowrap bg-zinc-50 px-2 py-1 rounded">
-                      <span className="text-zinc-500">Esp: {p.expectedQty}</span>
-                      <span className="text-zinc-300">→</span>
-                      <span
-                        className={
-                          p.actualQty! < p.expectedQty
-                            ? 'text-red-600 font-bold'
-                            : 'text-emerald-700 font-bold'
-                        }
-                      >
-                        Real: {p.actualQty}
-                      </span>
+                      <span className="text-emerald-700 font-bold">Qtd: {p.actualQty}</span>
                     </div>
                   </div>
                 ))}
@@ -84,12 +74,12 @@ export function SummaryModal({ open, onOpenChange, area, items, onConfirm }: Sum
             </div>
           )}
 
-          {uncounted.length === 0 && discrepancies.length === 0 && (
+          {uncounted.length === 0 && counted.length > 0 && (
             <div className="text-center py-8 text-emerald-700 font-medium flex flex-col items-center gap-3">
               <div className="bg-emerald-100 p-3 rounded-full">
                 <CheckCircle2 className="w-8 h-8" />
               </div>
-              Tudo perfeito! Nenhuma discrepância.
+              Todos os itens foram contados!
             </div>
           )}
         </ScrollArea>

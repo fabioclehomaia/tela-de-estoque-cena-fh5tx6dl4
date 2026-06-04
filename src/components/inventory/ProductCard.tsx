@@ -57,15 +57,9 @@ export function ProductCard({ item, onUpdate, disabled }: ProductCardProps) {
             <ImageIcon className="w-5 h-5 text-zinc-300" />
           </div>
         )}
-        <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-1.5 justify-center">
           <span className="font-semibold text-zinc-900 leading-tight">{item.name}</span>
-          <div className="text-sm text-zinc-500">
-            Estoque Esperado:{' '}
-            <span className="font-medium text-zinc-900">
-              {item.expectedQty} {item.unit}
-            </span>
-          </div>
-
+          <span className="text-xs text-zinc-500">Unidade: {item.unit}</span>
           {isLowStock && (
             <div className="flex flex-wrap gap-2 mt-1">
               <Badge

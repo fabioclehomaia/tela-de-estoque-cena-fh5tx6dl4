@@ -195,9 +195,6 @@ export default function Reports() {
   }, [levels, products, searchQuery])
 
   const totalItems = filteredCounts.length
-  const discrepancies = filteredCounts.filter(
-    (c) => c.counted_quantity !== c.previous_quantity,
-  ).length
 
   const handleExport = () => {
     let filteredLevels = levels
@@ -380,7 +377,7 @@ export default function Reports() {
         </TabsList>
 
         <TabsContent value="history" className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4">
             <Card className="bg-white shadow-sm border-zinc-200">
               <CardContent className="p-6 flex items-center gap-4">
                 <div className="bg-emerald-100 p-3 rounded-full text-emerald-700">
@@ -389,17 +386,6 @@ export default function Reports() {
                 <div>
                   <p className="text-sm font-medium text-zinc-500">Total de Registros (Período)</p>
                   <p className="text-3xl font-bold text-zinc-900">{totalItems}</p>
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="bg-white shadow-sm border-zinc-200">
-              <CardContent className="p-6 flex items-center gap-4">
-                <div className="bg-amber-100 p-3 rounded-full text-amber-700">
-                  <AlertTriangle className="w-6 h-6" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-zinc-500">Com Discrepâncias</p>
-                  <p className="text-3xl font-bold text-amber-600">{discrepancies}</p>
                 </div>
               </CardContent>
             </Card>
@@ -516,9 +502,7 @@ export default function Reports() {
                     <TableHead>Produto</TableHead>
                     <TableHead>Local</TableHead>
                     <TableHead>Funcionário</TableHead>
-                    <TableHead className="text-right">Qtd. Esperada</TableHead>
-                    <TableHead className="text-right">Qtd. Real</TableHead>
-                    <TableHead className="text-center">Status</TableHead>
+                    <TableHead className="text-right">Quantidade Contada</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -527,7 +511,6 @@ export default function Reports() {
                     const user = count.expand?.user_id
                     const subarea = count.expand?.subarea_id
                     const area = subarea?.expand?.area_id
-                    const hasDiscrepancy = count.previous_quantity !== count.counted_quantity
 
                     return (
                       <TableRow key={count.id}>
@@ -562,33 +545,8 @@ export default function Reports() {
                           </div>
                         </TableCell>
                         <TableCell className="text-zinc-600">{user?.name || user?.email}</TableCell>
-                        <TableCell className="text-right text-zinc-600">
-                          {count.previous_quantity}
-                        </TableCell>
-                        <TableCell
-                          className={cn(
-                            'text-right font-bold',
-                            hasDiscrepancy ? 'text-amber-600' : 'text-emerald-600',
-                          )}
-                        >
+                        <TableCell className="text-right font-bold text-emerald-700">
                           {count.counted_quantity}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {hasDiscrepancy ? (
-                            <Badge
-                              variant="outline"
-                              className="bg-amber-50 text-amber-700 border-amber-200"
-                            >
-                              Divergente
-                            </Badge>
-                          ) : (
-                            <Badge
-                              variant="outline"
-                              className="bg-emerald-50 text-emerald-700 border-emerald-200"
-                            >
-                              Correto
-                            </Badge>
-                          )}
                         </TableCell>
                       </TableRow>
                     )
@@ -611,7 +569,6 @@ export default function Reports() {
                 const user = count.expand?.user_id
                 const subarea = count.expand?.subarea_id
                 const area = subarea?.expand?.area_id
-                const hasDiscrepancy = count.previous_quantity !== count.counted_quantity
 
                 return (
                   <div key={count.id} className="p-4 flex flex-col gap-3">
@@ -637,37 +594,9 @@ export default function Reports() {
                           </p>
                         </div>
                       </div>
-                      {hasDiscrepancy ? (
-                        <Badge
-                          variant="outline"
-                          className="bg-amber-50 text-amber-700 border-amber-200 whitespace-nowrap"
-                        >
-                          Divergente
-                        </Badge>
-                      ) : (
-                        <Badge
-                          variant="outline"
-                          className="bg-emerald-50 text-emerald-700 border-emerald-200 whitespace-nowrap"
-                        >
-                          Correto
-                        </Badge>
-                      )}
-                    </div>
-
-                    <div className="flex justify-between items-center text-sm p-3 bg-zinc-50 rounded-md">
-                      <div className="flex flex-col">
-                        <span className="text-zinc-500 text-xs">Esperado ({product?.unit})</span>
-                        <span className="font-medium text-zinc-700">{count.previous_quantity}</span>
-                      </div>
-                      <span className="text-zinc-300">→</span>
                       <div className="flex flex-col text-right">
-                        <span className="text-zinc-500 text-xs">Real ({product?.unit})</span>
-                        <span
-                          className={cn(
-                            'font-bold',
-                            hasDiscrepancy ? 'text-amber-600' : 'text-emerald-600',
-                          )}
-                        >
+                        <span className="text-zinc-500 text-xs">Qtd. Contada</span>
+                        <span className="font-bold text-emerald-700 text-lg">
                           {count.counted_quantity}
                         </span>
                       </div>
