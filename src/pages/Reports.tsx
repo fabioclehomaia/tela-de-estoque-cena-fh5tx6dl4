@@ -9,6 +9,7 @@ import {
   Loader2,
   ListOrdered,
   History,
+  Download,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -40,7 +41,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { getInventoryCounts, InventoryCount } from '@/services/inventory_counts'
 import { getInventoryLevels, InventoryLevel } from '@/services/inventory_levels'
-import { getAreas, getSubareas, Area, Subarea } from '@/services/inventory'
+import { getAreas, getSubareas, getCategories, Area, Subarea, Category } from '@/services/inventory'
 import { getUsers, User } from '@/services/users'
 import { getProducts, Product } from '@/services/products'
 import pb from '@/lib/pocketbase/client'
@@ -56,6 +57,7 @@ export default function Reports() {
   const [levels, setLevels] = useState<InventoryLevel[]>([])
   const [areas, setAreas] = useState<Area[]>([])
   const [subareas, setSubareas] = useState<Subarea[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
@@ -68,6 +70,12 @@ export default function Reports() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedProduct, setSelectedProduct] = useState<any>(null)
 
+  const [exportModalOpen, setExportModalOpen] = useState(false)
+  const [exportAreaId, setExportAreaId] = useState<string>('_all_')
+  const [exportSubareaId, setExportSubareaId] = useState<string>('_all_')
+  const [exportCategoryId, setExportCategoryId] = useState<string>('_all_')
+  const [exportFormat, setExportFormat] = useState<'csv' | 'pdf'>('pdf')
+
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -76,6 +84,7 @@ export default function Reports() {
           fetchedCounts,
           fetchedAreas,
           fetchedSubareas,
+          fetchedCategories,
           fetchedUsers,
           fetchedLevels,
           fetchedProducts,
@@ -83,6 +92,7 @@ export default function Reports() {
           getInventoryCounts(),
           getAreas(),
           getSubareas(),
+          getCategories(),
           getUsers(),
           getInventoryLevels(),
           getProducts(),
@@ -90,6 +100,7 @@ export default function Reports() {
         setCounts(fetchedCounts)
         setAreas(fetchedAreas)
         setSubareas(fetchedSubareas)
+        setCategories(fetchedCategories)
         setUsers(fetchedUsers)
         setLevels(fetchedLevels)
         setProducts(fetchedProducts)
@@ -188,6 +199,143 @@ export default function Reports() {
     (c) => c.counted_quantity !== c.previous_quantity,
   ).length
 
+  const handleExport = () => {
+    let filteredLevels = levels
+
+    if (exportAreaId !== '_all_') {
+      filteredLevels = filteredLevels.filter(
+        (l) => l.expand?.subarea_id?.expand?.area_id?.id === exportAreaId,
+      )
+    }
+    if (exportSubareaId !== '_all_') {
+      filteredLevels = filteredLevels.filter((l) => l.subarea_id === exportSubareaId)
+    }
+    if (exportCategoryId !== '_all_') {
+      filteredLevels = filteredLevels.filter(
+        (l) => l.expand?.product_id?.category_id === exportCategoryId,
+      )
+    }
+
+    if (filteredLevels.length === 0) {
+      toast({
+        title: 'Atenção',
+        description: 'Não há dados para exportar com esses filtros.',
+        variant: 'destructive',
+      })
+      return
+    }
+
+    const data = filteredLevels.map((l) => {
+      const product = l.expand?.product_id
+      const subarea = l.expand?.subarea_id
+      const area = subarea?.expand?.area_id
+      const categoryName = product?.expand?.category_id?.name || 'Sem categoria'
+
+      return {
+        productName: product?.name || 'Desconhecido',
+        category: categoryName,
+        unit: product?.unit || '-',
+        area: area?.name || '-',
+        subarea: subarea?.name || '-',
+        quantity: l.quantity,
+        updated: format(safeDate(l.updated), 'dd/MM/yyyy HH:mm'),
+      }
+    })
+
+    if (exportFormat === 'csv') {
+      const headers = [
+        'Produto',
+        'Categoria',
+        'Unidade',
+        'Área',
+        'Subárea',
+        'Quantidade',
+        'Última Atualização',
+      ]
+      const csvContent = [
+        headers.join(','),
+        ...data.map(
+          (row) =>
+            `"${row.productName}","${row.category}","${row.unit}","${row.area}","${row.subarea}",${row.quantity},"${row.updated}"`,
+        ),
+      ].join('\n')
+
+      const blob = new Blob([new Uint8Array([0xef, 0xbb, 0xbf]), csvContent], {
+        type: 'text/csv;charset=utf-8;',
+      })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', `estoque_${format(new Date(), 'yyyyMMdd_HHmm')}.csv`)
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    } else if (exportFormat === 'pdf') {
+      const printWindow = window.open('', '_blank')
+      if (!printWindow) return
+
+      const html = `
+        <html>
+          <head>
+            <title>Relatório de Estoque</title>
+            <style>
+              body { font-family: sans-serif; padding: 20px; color: #18181b; }
+              table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; }
+              th, td { border: 1px solid #e4e4e7; padding: 10px; text-align: left; }
+              th { background-color: #f4f4f5; font-weight: 600; color: #3f3f46; }
+              h1 { color: #065f46; font-size: 24px; margin-bottom: 8px; }
+              p { color: #71717a; margin-top: 0; font-size: 14px; }
+            </style>
+          </head>
+          <body>
+            <h1>Relatório de Estoque Consolidado</h1>
+            <p>Gerado em: ${format(new Date(), 'dd/MM/yyyy HH:mm')}</p>
+            <table>
+              <thead>
+                <tr>
+                  <th>Produto</th>
+                  <th>Categoria</th>
+                  <th>Unidade</th>
+                  <th>Área</th>
+                  <th>Subárea</th>
+                  <th>Quantidade</th>
+                  <th>Última Atualização</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${data
+                  .map(
+                    (row) => `
+                  <tr>
+                    <td>${row.productName}</td>
+                    <td>${row.category}</td>
+                    <td>${row.unit}</td>
+                    <td>${row.area}</td>
+                    <td>${row.subarea}</td>
+                    <td>${row.quantity}</td>
+                    <td>${row.updated}</td>
+                  </tr>
+                `,
+                  )
+                  .join('')}
+              </tbody>
+            </table>
+            <script>
+              window.onload = () => {
+                window.print();
+                setTimeout(() => window.close(), 500);
+              }
+            </script>
+          </body>
+        </html>
+      `
+      printWindow.document.write(html)
+      printWindow.document.close()
+    }
+
+    setExportModalOpen(false)
+  }
+
   const clearFilters = () => {
     setStartDate('')
     setEndDate('')
@@ -207,13 +355,18 @@ export default function Reports() {
 
   return (
     <div className="container max-w-6xl mx-auto px-4 py-6 w-full space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="flex flex-col mb-2">
-        <h1 className="text-2xl font-bold font-serif text-emerald-900 tracking-tight">
-          Relatórios
-        </h1>
-        <p className="text-sm text-zinc-500 mt-1">
-          Acompanhe o estoque consolidado e histórico de contagens.
-        </p>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-2">
+        <div>
+          <h1 className="text-2xl font-bold font-serif text-emerald-900 tracking-tight">
+            Relatórios
+          </h1>
+          <p className="text-sm text-zinc-500 mt-1">
+            Acompanhe o estoque consolidado e histórico de contagens.
+          </p>
+        </div>
+        <Button onClick={() => setExportModalOpen(true)} className="w-full md:w-auto">
+          <Download className="w-4 h-4 mr-2" /> Exportar Relatório
+        </Button>
       </div>
 
       <Tabs defaultValue="history" className="w-full">
@@ -673,6 +826,102 @@ export default function Reports() {
                 </Table>
               </div>
             )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={exportModalOpen} onOpenChange={setExportModalOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Exportar Saldo de Estoque</DialogTitle>
+            <DialogDescription>
+              Selecione os filtros para exportar o saldo atual do estoque.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-1.5">
+              <Label>Área</Label>
+              <Select
+                value={exportAreaId}
+                onValueChange={(val) => {
+                  setExportAreaId(val)
+                  setExportSubareaId('_all_')
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Todas" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_all_">Todas</SelectItem>
+                  {areas.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Subárea</Label>
+              <Select
+                value={exportSubareaId}
+                onValueChange={setExportSubareaId}
+                disabled={exportAreaId === '_all_'}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Todas" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_all_">Todas</SelectItem>
+                  {subareas
+                    .filter((s) => s.area_id === exportAreaId)
+                    .map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Categoria</Label>
+              <Select value={exportCategoryId} onValueChange={setExportCategoryId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Todas" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="_all_">Todas</SelectItem>
+                  {categories.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Formato</Label>
+              <Select
+                value={exportFormat}
+                onValueChange={(val: 'csv' | 'pdf') => setExportFormat(val)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o formato" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pdf">PDF (Impressão)</SelectItem>
+                  <SelectItem value="csv">Excel / CSV</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setExportModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleExport}>
+              <Download className="w-4 h-4 mr-2" /> Exportar
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
