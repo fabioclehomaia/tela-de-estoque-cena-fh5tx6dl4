@@ -10,6 +10,7 @@ export interface User {
   role: UserRole
   phone: string
   active: boolean
+  area_id?: string
 }
 
 interface AuthContextType {

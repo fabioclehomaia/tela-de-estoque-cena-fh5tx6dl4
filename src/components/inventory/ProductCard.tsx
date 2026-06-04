@@ -73,7 +73,7 @@ export function ProductCard({ item, onUpdate, disabled }: ProductCardProps) {
         </div>
       </div>
 
-      <div className="w-24 shrink-0 mt-1">
+      <div className="flex flex-col gap-2 w-24 shrink-0 mt-1">
         <Input
           type="number"
           inputMode="decimal"
@@ -83,6 +83,18 @@ export function ProductCard({ item, onUpdate, disabled }: ProductCardProps) {
           disabled={disabled}
           className="h-12 text-center text-lg font-semibold bg-zinc-50 border-zinc-200 shadow-sm transition-all focus:ring-emerald-700 focus:bg-white"
         />
+        {!disabled && (
+          <button
+            type="button"
+            onClick={() => {
+              setLocalVal('0')
+              onUpdate(item.id, 0)
+            }}
+            className="text-[10px] uppercase font-bold text-amber-700 bg-amber-50 border border-amber-200 py-1 rounded hover:bg-amber-100 transition-colors"
+          >
+            Zerar
+          </button>
+        )}
       </div>
     </div>
   )

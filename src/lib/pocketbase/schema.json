@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-04T00:51:35.325Z",
+  "generatedAt": "2026-06-04T01:53:49.589Z",
   "collections": [
     {
       "name": "users",
@@ -56,6 +56,13 @@
           "type": "bool",
           "required": false,
           "system": false
+        },
+        {
+          "name": "area_id",
+          "type": "relation",
+          "required": false,
+          "system": false,
+          "collectionRef": "areas"
         }
       ],
       "indexes": [
@@ -234,6 +241,12 @@
           "type": "file",
           "required": false,
           "system": false
+        },
+        {
+          "name": "active",
+          "type": "bool",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": []
@@ -242,8 +255,8 @@
       "name": "inventory_counts",
       "type": "base",
       "apiRules": {
-        "list": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'manager')",
-        "view": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'manager')",
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
         "create": "@request.auth.id != ''",
         "update": null,
         "delete": null
@@ -306,7 +319,7 @@
         "list": "@request.auth.id != ''",
         "view": "@request.auth.id != ''",
         "create": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'manager')",
-        "update": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'manager')",
+        "update": "@request.auth.id != ''",
         "delete": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'manager')"
       },
       "fields": [

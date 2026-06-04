@@ -8,6 +8,7 @@ export interface Product {
   validity_days?: number
   min_stock?: number
   category_id: string
+  active: boolean
   image?: string
   created: string
   updated: string

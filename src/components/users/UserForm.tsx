@@ -27,6 +27,7 @@ const userSchema = z.object({
   phone: z.string().optional(),
   role: z.enum(['admin', 'manager', 'employee'] as const),
   active: z.boolean().default(true),
+  area_id: z.string().optional().nullable(),
   password: z.string().min(8, 'Mínimo 8 caracteres').optional().or(z.literal('')),
 })
 
@@ -34,10 +35,11 @@ export type UserFormValues = z.infer<typeof userSchema>
 
 interface UserFormProps {
   initialData?: User | null
+  areas?: { id: string; name: string }[]
   onSubmit: (values: UserFormValues, setError: any) => Promise<void>
 }
 
-export function UserForm({ initialData, onSubmit }: UserFormProps) {
+export function UserForm({ initialData, areas = [], onSubmit }: UserFormProps) {
   const form = useForm<UserFormValues>({
     resolver: zodResolver(userSchema),
     defaultValues: {
@@ -46,12 +48,15 @@ export function UserForm({ initialData, onSubmit }: UserFormProps) {
       phone: initialData?.phone || '',
       role: initialData?.role || 'employee',
       active: initialData ? initialData.active : true,
+      area_id: initialData?.area_id || '',
       password: '',
     },
   })
 
   const handleSubmit = async (values: UserFormValues) => {
-    await onSubmit(values, form.setError)
+    const payload = { ...values }
+    if (!payload.area_id || payload.area_id === 'none') payload.area_id = ''
+    await onSubmit(payload, form.setError)
   }
 
   return (
@@ -126,18 +131,47 @@ export function UserForm({ initialData, onSubmit }: UserFormProps) {
 
           <FormField
             control={form.control}
-            name="password"
+            name="area_id"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>{initialData ? 'Nova Senha (opcional)' : 'Senha'}</FormLabel>
-                <FormControl>
-                  <Input type="password" placeholder="******" {...field} />
-                </FormControl>
+                <FormLabel>Área Restrita (Opcional)</FormLabel>
+                <Select
+                  onValueChange={(v) => field.onChange(v === 'none' ? '' : v)}
+                  value={field.value || 'none'}
+                >
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Todas as Áreas" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="none">Nenhuma / Todas</SelectItem>
+                    {areas.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>
+                        {a.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <FormMessage />
               </FormItem>
             )}
           />
         </div>
+
+        <FormField
+          control={form.control}
+          name="password"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{initialData ? 'Nova Senha (opcional)' : 'Senha'}</FormLabel>
+              <FormControl>
+                <Input type="password" placeholder="******" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
         {initialData && (
           <FormField
