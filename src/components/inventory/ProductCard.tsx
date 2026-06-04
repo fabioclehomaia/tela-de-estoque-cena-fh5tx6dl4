@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { CountableItem } from '@/lib/inventory-data'
+import { CountableItem } from '@/types/inventory'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { AlertTriangle } from 'lucide-react'
@@ -44,10 +44,10 @@ export function ProductCard({ item, onUpdate, disabled }: ProductCardProps) {
       )}
     >
       <div className="flex gap-3 flex-1 pr-4">
-        {(item as any).image ? (
+        {item.image ? (
           <div className="w-14 h-14 rounded-lg border border-zinc-200 overflow-hidden bg-zinc-50 shrink-0">
             <img
-              src={`${pb.baseUrl}/api/files/products/${item.id}/${(item as any).image}?thumb=100x100`}
+              src={`${pb.baseUrl}/api/files/products/${item.productId}/${item.image}?thumb=100x100`}
               alt={item.name}
               className="w-full h-full object-cover"
             />

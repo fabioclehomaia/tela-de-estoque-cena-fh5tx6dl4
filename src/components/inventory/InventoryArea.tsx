@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { CountableItem } from '@/lib/inventory-data'
+import { CountableItem } from '@/types/inventory'
 import {
   Accordion,
   AccordionContent,

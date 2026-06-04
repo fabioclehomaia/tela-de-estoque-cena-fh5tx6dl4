@@ -1,4 +1,4 @@
-import { CountableItem } from '@/lib/inventory-data'
+import { CountableItem } from '@/types/inventory'
 import {
   Dialog,
   DialogContent,

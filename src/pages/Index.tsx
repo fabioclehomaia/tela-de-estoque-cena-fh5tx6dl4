@@ -1,153 +1,231 @@
-import { useState, useEffect } from 'react'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useState, useEffect, useMemo } from 'react'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { InventoryArea } from '@/components/inventory/InventoryArea'
-import { ChefHat, Wine, ConciergeBell, Loader2, PackageSearch } from 'lucide-react'
-import { useToast } from '@/hooks/use-toast'
-import { useAuth } from '@/hooks/use-auth'
-import { getAreas, getSubareas, Area, Subarea } from '@/services/inventory'
+import { useRealtime } from '@/hooks/use-realtime'
 import {
   getInventoryLevels,
-  updateInventoryLevel,
   InventoryLevel,
+  updateInventoryLevel,
 } from '@/services/inventory_levels'
 import { createInventoryCount } from '@/services/inventory_counts'
-import { CountableItem } from '@/lib/inventory-data'
+import { useAuth } from '@/hooks/use-auth'
+import { toast } from 'sonner'
+import pb from '@/lib/pocketbase/client'
+import { CountableItem } from '@/types/inventory'
+
+interface Area {
+  id: string
+  name: string
+}
+interface Subarea {
+  id: string
+  name: string
+  area_id: string
+}
 
 export default function Index() {
   const { user } = useAuth()
   const [areas, setAreas] = useState<Area[]>([])
   const [subareas, setSubareas] = useState<Subarea[]>([])
-  const [levels, setLevels] = useState<InventoryLevel[]>([])
-  const [localActualQties, setLocalActualQties] = useState<Record<string, number | null>>({})
-  const [completedAreas, setCompletedAreas] = useState<Set<string>>(new Set())
-  const [loading, setLoading] = useState(true)
-  const { toast } = useToast()
 
-  const loadData = async () => {
+  const [selectedAreaId, setSelectedAreaId] = useState<string>('all')
+  const [selectedSubareaId, setSelectedSubareaId] = useState<string>('all')
+
+  const [levels, setLevels] = useState<InventoryLevel[]>([])
+  const [counts, setCounts] = useState<Record<string, number | null>>({})
+
+  const fetchData = async () => {
     try {
-      const [a, s, l] = await Promise.all([getAreas(), getSubareas(), getInventoryLevels()])
-      setAreas(a)
-      setSubareas(s)
-      setLevels(l)
-    } finally {
-      setLoading(false)
+      const [areasRes, subareasRes, levelsRes] = await Promise.all([
+        pb.collection('areas').getFullList<Area>({ sort: 'name' }),
+        pb.collection('subareas').getFullList<Subarea>({ sort: 'name' }),
+        getInventoryLevels(),
+      ])
+      setAreas(areasRes)
+      setSubareas(subareasRes)
+      setLevels(levelsRes)
+    } catch (err) {
+      toast.error('Erro ao carregar dados do estoque.')
     }
   }
 
   useEffect(() => {
-    loadData()
+    fetchData()
   }, [])
 
-  const handleUpdate = (levelId: string, qty: number | null) => {
-    setLocalActualQties((prev) => ({ ...prev, [levelId]: qty }))
+  useRealtime('inventory_levels', () => {
+    getInventoryLevels().then(setLevels)
+  })
+
+  const filteredSubareas = useMemo(() => {
+    if (selectedAreaId === 'all') return subareas
+    return subareas.filter((s) => s.area_id === selectedAreaId)
+  }, [subareas, selectedAreaId])
+
+  useEffect(() => {
+    if (selectedAreaId !== 'all' && !filteredSubareas.find((s) => s.id === selectedSubareaId)) {
+      setSelectedSubareaId('all')
+    }
+  }, [selectedAreaId, filteredSubareas])
+
+  const displayedLevels = useMemo(() => {
+    let filtered = levels
+    if (selectedAreaId !== 'all') {
+      filtered = filtered.filter(
+        (l) => l.expand?.subarea_id?.expand?.area_id?.id === selectedAreaId,
+      )
+    }
+    if (selectedSubareaId !== 'all') {
+      filtered = filtered.filter((l) => l.subarea_id === selectedSubareaId)
+    }
+    return filtered
+  }, [levels, selectedAreaId, selectedSubareaId])
+
+  const items = useMemo(() => {
+    return displayedLevels.map((level) => {
+      const product = level.expand?.product_id as any
+      const subarea = level.expand?.subarea_id
+
+      return {
+        id: level.id,
+        productId: level.product_id,
+        subareaId: level.subarea_id,
+        name: product?.name || 'Desconhecido',
+        subareaName: subarea?.name || 'Desconhecido',
+        unit: product?.unit || 'un',
+        expectedQty: level.quantity,
+        actualQty: counts[level.id] !== undefined ? counts[level.id] : null,
+        minStock: product?.min_stock ?? null,
+        image: product?.image,
+        productObj: product,
+      } as CountableItem
+    })
+  }, [displayedLevels, counts])
+
+  const handleUpdateCount = (id: string, qty: number | null) => {
+    setCounts((prev) => ({ ...prev, [id]: qty }))
   }
 
-  const handleComplete = async (areaId: string, areaName: string) => {
-    const areaSubareas = subareas.filter((s) => s.area_id === areaId)
-    const areaLevels = levels.filter((l) => areaSubareas.some((s) => s.id === l.subarea_id))
+  const handleComplete = async () => {
+    if (!user) return
+    const toSave = items.filter((i) => i.actualQty !== null)
+    if (toSave.length === 0) {
+      toast.info('Nenhum item contado para salvar.')
+      return
+    }
+
+    const toastId = toast.loading('Salvando contagem...')
 
     try {
-      const promises = areaLevels.map(async (level) => {
-        const actualQty = localActualQties[level.id]
-        if (actualQty !== undefined && actualQty !== null) {
-          await createInventoryCount({
-            product_id: level.product_id,
-            subarea_id: level.subarea_id,
-            user_id: user.id,
-            previous_quantity: level.quantity,
-            counted_quantity: actualQty,
-          })
-          await updateInventoryLevel(level.id, { quantity: actualQty })
-        }
-      })
-      await Promise.all(promises)
+      for (const item of toSave) {
+        await createInventoryCount({
+          product_id: item.productId,
+          subarea_id: item.subareaId,
+          user_id: user.id,
+          previous_quantity: item.expectedQty,
+          counted_quantity: item.actualQty!,
+        })
 
-      setCompletedAreas((prev) => new Set(prev).add(areaId))
-      toast({
-        title: 'Área Concluída',
-        description: `A contagem do setor ${areaName} foi salva com sucesso.`,
-        className: 'bg-emerald-800 text-white border-none shadow-elevation',
+        if (item.actualQty !== item.expectedQty) {
+          await updateInventoryLevel(item.id, {
+            quantity: item.actualQty!,
+          })
+        }
+      }
+
+      toast.success('Contagem salva com sucesso!', { id: toastId })
+
+      setCounts((prev) => {
+        const next = { ...prev }
+        toSave.forEach((i) => {
+          delete next[i.id]
+        })
+        return next
       })
+
+      await fetchData()
     } catch (err) {
-      toast({
-        title: 'Erro',
-        description: 'Ocorreu um erro ao salvar a contagem.',
-        variant: 'destructive',
-      })
+      toast.error('Erro ao salvar contagem.', { id: toastId })
     }
   }
 
-  const getIcon = (name: string) => {
-    if (name.toLowerCase().includes('cozinha')) return <ChefHat className="w-4 h-4 mr-2" />
-    if (name.toLowerCase().includes('bar')) return <Wine className="w-4 h-4 mr-2" />
-    return <ConciergeBell className="w-4 h-4 mr-2" />
-  }
-
-  if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-emerald-800" />
-      </div>
-    )
-  }
-
-  if (areas.length === 0) {
-    return (
-      <div className="container max-w-3xl mx-auto px-4 py-20 text-center">
-        <PackageSearch className="w-12 h-12 text-zinc-300 mx-auto mb-4" />
-        <h2 className="text-xl font-bold text-zinc-500">Nenhuma área configurada</h2>
-      </div>
-    )
-  }
+  const areaName = useMemo(() => {
+    if (selectedSubareaId !== 'all')
+      return subareas.find((s) => s.id === selectedSubareaId)?.name || 'Subárea'
+    if (selectedAreaId !== 'all') return areas.find((a) => a.id === selectedAreaId)?.name || 'Área'
+    return 'Geral'
+  }, [selectedAreaId, selectedSubareaId, areas, subareas])
 
   return (
-    <div className="container max-w-3xl mx-auto px-4 py-6">
-      <Tabs defaultValue={areas[0].id} className="w-full">
-        <TabsList
-          className="grid w-full h-auto flex-wrap mb-6 bg-zinc-200/60 p-1 rounded-xl"
-          style={{ gridTemplateColumns: `repeat(${Math.min(areas.length, 4)}, minmax(0, 1fr))` }}
-        >
-          {areas.map((area) => (
-            <TabsTrigger
-              key={area.id}
-              value={area.id}
-              className="data-[state=active]:bg-white data-[state=active]:text-emerald-900 data-[state=active]:shadow-sm text-sm font-semibold rounded-lg transition-all py-2.5"
-            >
-              {getIcon(area.name)}
-              {area.name}
-            </TabsTrigger>
-          ))}
-        </TabsList>
+    <div className="max-w-3xl mx-auto py-6 px-4">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold text-zinc-900 tracking-tight mb-2">
+          Contagem de Estoque
+        </h1>
+        <p className="text-zinc-500">
+          Selecione uma área e subárea para registrar a contagem dos produtos.
+        </p>
+      </div>
 
-        {areas.map((area) => {
-          const areaSubareas = subareas.filter((s) => s.area_id === area.id)
-          const areaLevels = levels.filter((l) => areaSubareas.some((s) => s.id === l.subarea_id))
+      <div className="flex flex-col sm:flex-row gap-4 mb-8 bg-zinc-50 p-4 rounded-xl border border-zinc-100">
+        <div className="flex-1">
+          <label className="text-sm font-semibold text-zinc-700 mb-1.5 block">Área</label>
+          <Select value={selectedAreaId} onValueChange={setSelectedAreaId}>
+            <SelectTrigger className="h-11 bg-white shadow-sm">
+              <SelectValue placeholder="Selecione a Área" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as Áreas</SelectItem>
+              {areas.map((a) => (
+                <SelectItem key={a.id} value={a.id}>
+                  {a.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex-1">
+          <label className="text-sm font-semibold text-zinc-700 mb-1.5 block">Subárea</label>
+          <Select value={selectedSubareaId} onValueChange={setSelectedSubareaId}>
+            <SelectTrigger className="h-11 bg-white shadow-sm">
+              <SelectValue placeholder="Selecione a Subárea" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as Subáreas</SelectItem>
+              {filteredSubareas.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
 
-          const items: CountableItem[] = areaLevels.map((l) => ({
-            id: l.id,
-            productId: l.product_id,
-            subareaId: l.subarea_id,
-            subareaName: areaSubareas.find((s) => s.id === l.subarea_id)?.name || '',
-            name: l.expand?.product_id?.name || 'Desconhecido',
-            unit: l.expand?.product_id?.unit || '',
-            expectedQty: l.quantity,
-            actualQty: localActualQties[l.id] ?? null,
-            minStock: l.expand?.product_id?.min_stock ?? null,
-          }))
-
-          return (
-            <TabsContent key={area.id} value={area.id} className="focus-visible:outline-none mt-0">
-              <InventoryArea
-                areaName={area.name}
-                items={items}
-                isCompleted={completedAreas.has(area.id)}
-                onUpdate={handleUpdate}
-                onComplete={() => handleComplete(area.id, area.name)}
-              />
-            </TabsContent>
-          )
-        })}
-      </Tabs>
+      {items.length > 0 ? (
+        <InventoryArea
+          areaName={areaName}
+          items={items}
+          isCompleted={false}
+          onUpdate={handleUpdateCount}
+          onComplete={handleComplete}
+        />
+      ) : (
+        <div className="text-center py-16 flex flex-col items-center bg-white rounded-xl border border-zinc-100 shadow-sm">
+          <p className="text-zinc-500 font-medium">
+            Nenhum produto encontrado para a seleção atual.
+          </p>
+          <p className="text-sm text-zinc-400 mt-1">
+            Vá em Produtos &gt; Vincular a Subáreas para adicionar.
+          </p>
+        </div>
+      )}
     </div>
   )
 }
