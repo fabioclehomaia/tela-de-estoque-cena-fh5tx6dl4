@@ -1,7 +1,16 @@
 import { useState, useEffect, useMemo } from 'react'
-import { format, parseISO, isWithinInterval, startOfDay, endOfDay } from 'date-fns'
 import {
-  AlertTriangle,
+  format,
+  parseISO,
+  isWithinInterval,
+  startOfDay,
+  endOfDay,
+  subDays,
+  startOfMonth,
+  subMonths,
+  endOfMonth,
+} from 'date-fns'
+import {
   CheckCircle2,
   Calendar as CalendarIcon,
   FilterX,
@@ -10,8 +19,11 @@ import {
   ListOrdered,
   History,
   Download,
+  ShoppingCart,
+  TrendingUp,
+  ImageIcon,
 } from 'lucide-react'
-import { Card, CardContent } from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
   Table,
   TableBody,
@@ -39,13 +51,14 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts'
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 import { getInventoryCounts, InventoryCount } from '@/services/inventory_counts'
 import { getInventoryLevels, InventoryLevel } from '@/services/inventory_levels'
 import { getAreas, getSubareas, getCategories, Area, Subarea, Category } from '@/services/inventory'
 import { getUsers, User } from '@/services/users'
 import { getProducts, Product } from '@/services/products'
 import pb from '@/lib/pocketbase/client'
-import { ImageIcon } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 
@@ -61,19 +74,18 @@ export default function Reports() {
   const [users, setUsers] = useState<User[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState('history')
 
   const [startDate, setStartDate] = useState<string>('')
   const [endDate, setEndDate] = useState<string>('')
   const [userId, setUserId] = useState<string>('_all_')
   const [areaId, setAreaId] = useState<string>('_all_')
   const [subareaId, setSubareaId] = useState<string>('_all_')
+  const [categoryId, setCategoryId] = useState<string>('_all_')
   const [searchQuery, setSearchQuery] = useState('')
-  const [selectedProduct, setSelectedProduct] = useState<any>(null)
 
+  const [selectedProduct, setSelectedProduct] = useState<any>(null)
   const [exportModalOpen, setExportModalOpen] = useState(false)
-  const [exportAreaId, setExportAreaId] = useState<string>('_all_')
-  const [exportSubareaId, setExportSubareaId] = useState<string>('_all_')
-  const [exportCategoryId, setExportCategoryId] = useState<string>('_all_')
   const [exportFormat, setExportFormat] = useState<'csv' | 'pdf'>('pdf')
 
   useEffect(() => {
@@ -117,13 +129,38 @@ export default function Reports() {
     loadData()
   }, [toast])
 
+  const getCategoryName = (id: string) =>
+    categories.find((c) => c.id === id)?.name || 'Desconhecida'
+
+  // Master lookup for areas/subareas associated with each product (based on levels + history)
+  const productLocations = useMemo(() => {
+    const map = new Map<string, { areas: Set<string>; subareas: Set<string> }>()
+    products.forEach((p) => map.set(p.id, { areas: new Set(), subareas: new Set() }))
+    levels.forEach((l) => {
+      const p = map.get(l.product_id)
+      if (p) {
+        p.subareas.add(l.subarea_id)
+        const aId = l.expand?.subarea_id?.expand?.area_id?.id
+        if (aId) p.areas.add(aId)
+      }
+    })
+    counts.forEach((c) => {
+      const p = map.get(c.product_id)
+      if (p) {
+        p.subareas.add(c.subarea_id)
+        const aId = c.expand?.subarea_id?.expand?.area_id?.id
+        if (aId) p.areas.add(aId)
+      }
+    })
+    return map
+  }, [products, levels, counts])
+
+  // --- HISTORY TAB DATA ---
   const filteredCounts = useMemo(() => {
     return counts.filter((count) => {
       const product = count.expand?.product_id
       const productName = product?.name?.toLowerCase() || ''
-      if (searchQuery && !productName.includes(searchQuery.toLowerCase())) {
-        return false
-      }
+      if (searchQuery && !productName.includes(searchQuery.toLowerCase())) return false
 
       if (startDate && endDate) {
         const date = safeDate(count.created)
@@ -139,6 +176,7 @@ export default function Reports() {
       }
 
       if (userId !== '_all_' && count.user_id !== userId) return false
+      if (categoryId !== '_all_' && product?.category_id !== categoryId) return false
 
       const subarea = count.expand?.subarea_id
       if (areaId !== '_all_') {
@@ -148,22 +186,13 @@ export default function Reports() {
 
       return true
     })
-  }, [counts, searchQuery, startDate, endDate, userId, areaId, subareaId])
+  }, [counts, searchQuery, startDate, endDate, userId, categoryId, areaId, subareaId])
 
+  // --- SUMMARY TAB DATA ---
   const summaryByProduct = useMemo(() => {
-    const map = new Map<
-      string,
-      {
-        id: string
-        name: string
-        unit: string
-        category: string
-        total: number
-        breakdown: { subarea: string; area: string; quantity: number }[]
-      }
-    >()
-
+    const map = new Map<string, any>()
     products.forEach((p) => {
+      if (categoryId !== '_all_' && p.category_id !== categoryId) return
       map.set(p.id, {
         id: p.id,
         name: p.name,
@@ -178,92 +207,199 @@ export default function Reports() {
     levels.forEach((l) => {
       const pid = l.product_id
       if (!map.has(pid)) return
+      const subarea = l.expand?.subarea_id
+      const area = subarea?.expand?.area_id
+
+      if (areaId !== '_all_' && area?.id !== areaId) return
+      if (subareaId !== '_all_' && subarea?.id !== subareaId) return
+
       const item = map.get(pid)!
       item.total += l.quantity
       item.breakdown.push({
-        subarea: l.expand?.subarea_id?.name || 'Desconhecida',
-        area: l.expand?.subarea_id?.expand?.area_id?.name || 'Desconhecida',
+        subarea: subarea?.name || 'Desconhecida',
+        area: area?.name || 'Desconhecida',
         quantity: l.quantity,
       })
     })
 
     let arr = Array.from(map.values())
-    if (searchQuery) {
+    if (areaId !== '_all_') arr = arr.filter((i) => i.total > 0)
+    if (searchQuery)
       arr = arr.filter((i) => i.name.toLowerCase().includes(searchQuery.toLowerCase()))
-    }
     return arr.sort((a, b) => a.name.localeCompare(b.name))
-  }, [levels, products, searchQuery])
+  }, [levels, products, searchQuery, categoryId, areaId, subareaId])
 
-  const totalItems = filteredCounts.length
+  // --- SHOPPING LIST TAB DATA ---
+  const shoppingList = useMemo(() => {
+    const map = new Map<string, any>()
+    products.forEach((p) => {
+      if (!p.active) return
+      if (categoryId !== '_all_' && p.category_id !== categoryId) return
+      map.set(p.id, { product: p, total: 0 })
+    })
 
+    levels.forEach((l) => {
+      const pid = l.product_id
+      if (map.has(pid)) map.get(pid)!.total += l.quantity
+    })
+
+    let list = Array.from(map.values())
+      .filter((item) => {
+        const minStock = item.product.min_stock || 0
+        return minStock > 0 && item.total < minStock
+      })
+      .map((item) => ({
+        ...item,
+        need: (item.product.min_stock || 0) - item.total,
+      }))
+
+    if (areaId !== '_all_') {
+      list = list.filter((item) => productLocations.get(item.product.id)?.areas.has(areaId))
+    }
+    if (subareaId !== '_all_') {
+      list = list.filter((item) => productLocations.get(item.product.id)?.subareas.has(subareaId))
+    }
+    if (searchQuery) {
+      list = list.filter((item) =>
+        item.product.name.toLowerCase().includes(searchQuery.toLowerCase()),
+      )
+    }
+    return list.sort((a, b) => b.need - a.need)
+  }, [products, levels, productLocations, categoryId, areaId, subareaId, searchQuery])
+
+  // --- TRENDS TAB DATA ---
+  const consumptionData = useMemo(() => {
+    let validCounts = counts.filter((c) => {
+      const product = c.expand?.product_id
+      if (!product || !products.find((p) => p.id === product.id)?.active) return false
+
+      if (startDate && endDate) {
+        const date = safeDate(c.created)
+        const start = startOfDay(safeDate(startDate))
+        const end = endOfDay(safeDate(endDate))
+        if (!isWithinInterval(date, { start, end })) return false
+      } else if (startDate) {
+        if (safeDate(c.created) < startOfDay(safeDate(startDate))) return false
+      } else if (endDate) {
+        if (safeDate(c.created) > endOfDay(safeDate(endDate))) return false
+      }
+
+      if (categoryId !== '_all_' && product.category_id !== categoryId) return false
+      const subarea = c.expand?.subarea_id
+      if (areaId !== '_all_' && subarea?.expand?.area_id?.id !== areaId) return false
+      if (subareaId !== '_all_' && subarea?.id !== subareaId) return false
+      if (searchQuery && !product.name.toLowerCase().includes(searchQuery.toLowerCase()))
+        return false
+
+      return true
+    })
+
+    const productConsumption = new Map<string, { product: any; consumed: number }>()
+    const timeline = new Map<string, { display: string; ts: number; consumption: number }>()
+
+    validCounts.forEach((c) => {
+      if (c.previous_quantity > c.counted_quantity) {
+        const consumed = c.previous_quantity - c.counted_quantity
+
+        // Group by product
+        const pid = c.product_id
+        if (!productConsumption.has(pid)) {
+          productConsumption.set(pid, { product: c.expand?.product_id, consumed: 0 })
+        }
+        productConsumption.get(pid)!.consumed += consumed
+
+        // Group by date for chart
+        const d = startOfDay(safeDate(c.created))
+        const ts = d.getTime()
+        const key = ts.toString()
+        if (!timeline.has(key)) {
+          timeline.set(key, { display: format(d, 'dd/MM'), ts, consumption: 0 })
+        }
+        timeline.get(key)!.consumption += consumed
+      }
+    })
+
+    const list = Array.from(productConsumption.values()).sort((a, b) => b.consumed - a.consumed)
+    const chartData = Array.from(timeline.values())
+      .sort((a, b) => a.ts - b.ts)
+      .map((t) => ({ date: t.display, consumption: t.consumption }))
+
+    return { list, chartData }
+  }, [counts, products, startDate, endDate, categoryId, areaId, subareaId, searchQuery])
+
+  // --- EXPORT LOGIC ---
   const handleExport = () => {
-    let filteredLevels = levels
+    let data: any[] = []
+    let title = 'Relatório'
+    let headers: string[] = []
 
-    if (exportAreaId !== '_all_') {
-      filteredLevels = filteredLevels.filter(
-        (l) => l.expand?.subarea_id?.expand?.area_id?.id === exportAreaId,
-      )
-    }
-    if (exportSubareaId !== '_all_') {
-      filteredLevels = filteredLevels.filter((l) => l.subarea_id === exportSubareaId)
-    }
-    if (exportCategoryId !== '_all_') {
-      filteredLevels = filteredLevels.filter(
-        (l) => l.expand?.product_id?.category_id === exportCategoryId,
-      )
+    if (activeTab === 'summary') {
+      title = 'Estoque Atual'
+      headers = ['Produto', 'Categoria', 'Unidade', 'Quantidade']
+      data = summaryByProduct.map((row) => [row.name, row.category, row.unit, row.total])
+    } else if (activeTab === 'shopping') {
+      title = 'Lista de Compras'
+      headers = [
+        'Produto',
+        'Categoria',
+        'Unidade',
+        'Estoque Mínimo',
+        'Estoque Atual',
+        'Comprar_Produzir',
+      ]
+      data = shoppingList.map((row) => [
+        row.product.name,
+        getCategoryName(row.product.category_id),
+        row.product.unit,
+        row.product.min_stock || 0,
+        row.total,
+        row.need,
+      ])
+    } else if (activeTab === 'trends') {
+      title = 'Tendências de Consumo'
+      headers = ['Produto', 'Categoria', 'Unidade', 'Total Consumido']
+      data = consumptionData.list.map((row) => [
+        row.product.name,
+        getCategoryName(row.product.category_id),
+        row.product.unit,
+        row.consumed,
+      ])
+    } else if (activeTab === 'history') {
+      title = 'Histórico de Contagens'
+      headers = ['Data/Hora', 'Produto', 'Local', 'Funcionário', 'Qtd Contada']
+      data = filteredCounts.map((count) => [
+        format(safeDate(count.created), 'dd/MM/yyyy HH:mm'),
+        count.expand?.product_id?.name || 'Desconhecido',
+        `${count.expand?.subarea_id?.expand?.area_id?.name || ''} - ${count.expand?.subarea_id?.name || ''}`,
+        count.expand?.user_id?.name || count.expand?.user_id?.email || '',
+        count.counted_quantity,
+      ])
     }
 
-    if (filteredLevels.length === 0) {
+    if (data.length === 0) {
       toast({
         title: 'Atenção',
-        description: 'Não há dados para exportar com esses filtros.',
+        description: 'Não há dados para exportar com os filtros atuais.',
         variant: 'destructive',
       })
       return
     }
 
-    const data = filteredLevels.map((l) => {
-      const product = l.expand?.product_id
-      const subarea = l.expand?.subarea_id
-      const area = subarea?.expand?.area_id
-      const categoryName = product?.expand?.category_id?.name || 'Sem categoria'
-
-      return {
-        productName: product?.name || 'Desconhecido',
-        category: categoryName,
-        unit: product?.unit || '-',
-        area: area?.name || '-',
-        subarea: subarea?.name || '-',
-        quantity: l.quantity,
-        updated: format(safeDate(l.updated), 'dd/MM/yyyy HH:mm'),
-      }
-    })
-
     if (exportFormat === 'csv') {
-      const headers = [
-        'Produto',
-        'Categoria',
-        'Unidade',
-        'Área',
-        'Subárea',
-        'Quantidade',
-        'Última Atualização',
-      ]
       const csvContent = [
-        headers.join(','),
-        ...data.map(
-          (row) =>
-            `"${row.productName}","${row.category}","${row.unit}","${row.area}","${row.subarea}",${row.quantity},"${row.updated}"`,
-        ),
+        headers.map((h) => `"${h}"`).join(','),
+        ...data.map((row) => row.map((cell: any) => `"${cell}"`).join(',')),
       ].join('\n')
-
       const blob = new Blob([new Uint8Array([0xef, 0xbb, 0xbf]), csvContent], {
         type: 'text/csv;charset=utf-8;',
       })
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.setAttribute('download', `estoque_${format(new Date(), 'yyyyMMdd_HHmm')}.csv`)
+      link.setAttribute(
+        'download',
+        `${title.toLowerCase().replace(/ /g, '_')}_${format(new Date(), 'yyyyMMdd_HHmm')}.csv`,
+      )
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
@@ -274,7 +410,7 @@ export default function Reports() {
       const html = `
         <html>
           <head>
-            <title>Relatório de Estoque</title>
+            <title>${title}</title>
             <style>
               body { font-family: sans-serif; padding: 20px; color: #18181b; }
               table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; }
@@ -285,51 +421,23 @@ export default function Reports() {
             </style>
           </head>
           <body>
-            <h1>Relatório de Estoque Consolidado</h1>
+            <h1>${title}</h1>
             <p>Gerado em: ${format(new Date(), 'dd/MM/yyyy HH:mm')}</p>
             <table>
               <thead>
-                <tr>
-                  <th>Produto</th>
-                  <th>Categoria</th>
-                  <th>Unidade</th>
-                  <th>Área</th>
-                  <th>Subárea</th>
-                  <th>Quantidade</th>
-                  <th>Última Atualização</th>
-                </tr>
+                <tr>${headers.map((h) => `<th>${h}</th>`).join('')}</tr>
               </thead>
               <tbody>
-                ${data
-                  .map(
-                    (row) => `
-                  <tr>
-                    <td>${row.productName}</td>
-                    <td>${row.category}</td>
-                    <td>${row.unit}</td>
-                    <td>${row.area}</td>
-                    <td>${row.subarea}</td>
-                    <td>${row.quantity}</td>
-                    <td>${row.updated}</td>
-                  </tr>
-                `,
-                  )
-                  .join('')}
+                ${data.map((row) => `<tr>${row.map((cell: any) => `<td>${cell}</td>`).join('')}</tr>`).join('')}
               </tbody>
             </table>
-            <script>
-              window.onload = () => {
-                window.print();
-                setTimeout(() => window.close(), 500);
-              }
-            </script>
+            <script>window.onload = () => { window.print(); setTimeout(() => window.close(), 500); }</script>
           </body>
         </html>
       `
       printWindow.document.write(html)
       printWindow.document.close()
     }
-
     setExportModalOpen(false)
   }
 
@@ -337,6 +445,7 @@ export default function Reports() {
     setStartDate('')
     setEndDate('')
     setUserId('_all_')
+    setCategoryId('_all_')
     setAreaId('_all_')
     setSubareaId('_all_')
     setSearchQuery('')
@@ -358,42 +467,45 @@ export default function Reports() {
             Relatórios
           </h1>
           <p className="text-sm text-zinc-500 mt-1">
-            Acompanhe o estoque consolidado e histórico de contagens.
+            Analise saldos, histórico, necessidades de compras e consumo.
           </p>
         </div>
         <Button onClick={() => setExportModalOpen(true)} className="w-full md:w-auto">
-          <Download className="w-4 h-4 mr-2" /> Exportar Relatório
+          <Download className="w-4 h-4 mr-2" /> Exportar
         </Button>
       </div>
 
-      <Tabs defaultValue="history" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 max-w-[400px] mb-6">
-          <TabsTrigger value="history" className="flex items-center gap-2">
-            <History className="w-4 h-4" /> Histórico
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 mb-6 h-auto">
+          <TabsTrigger
+            value="history"
+            className="flex flex-col md:flex-row items-center gap-2 py-2"
+          >
+            <History className="w-4 h-4" /> <span className="hidden md:inline">Histórico</span>
           </TabsTrigger>
-          <TabsTrigger value="summary" className="flex items-center gap-2">
-            <ListOrdered className="w-4 h-4" /> Estoque Atual
+          <TabsTrigger
+            value="summary"
+            className="flex flex-col md:flex-row items-center gap-2 py-2"
+          >
+            <ListOrdered className="w-4 h-4" />{' '}
+            <span className="hidden md:inline">Estoque Atual</span>
+          </TabsTrigger>
+          <TabsTrigger
+            value="shopping"
+            className="flex flex-col md:flex-row items-center gap-2 py-2"
+          >
+            <ShoppingCart className="w-4 h-4" />{' '}
+            <span className="hidden md:inline">Lista de Compras</span>
+          </TabsTrigger>
+          <TabsTrigger value="trends" className="flex flex-col md:flex-row items-center gap-2 py-2">
+            <TrendingUp className="w-4 h-4" /> <span className="hidden md:inline">Tendências</span>
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="history" className="space-y-6">
-          <div className="grid grid-cols-1 gap-4">
-            <Card className="bg-white shadow-sm border-zinc-200">
-              <CardContent className="p-6 flex items-center gap-4">
-                <div className="bg-emerald-100 p-3 rounded-full text-emerald-700">
-                  <CheckCircle2 className="w-6 h-6" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-zinc-500">Total de Registros (Período)</p>
-                  <p className="text-3xl font-bold text-zinc-900">{totalItems}</p>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          <Card className="shadow-sm border-zinc-200">
-            <CardContent className="p-4 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 items-end">
+        <Card className="shadow-sm border-zinc-200 mb-6 bg-white">
+          <CardContent className="p-4 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 items-end">
+              {(activeTab === 'history' || activeTab === 'trends') && (
                 <div className="space-y-1.5 lg:col-span-2">
                   <Label>Período</Label>
                   <div className="flex items-center gap-2">
@@ -412,6 +524,57 @@ export default function Reports() {
                     />
                   </div>
                 </div>
+              )}
+
+              {activeTab === 'trends' && (
+                <div className="space-y-1.5 flex flex-col justify-end">
+                  <Select
+                    onValueChange={(val) => {
+                      if (val === '30') {
+                        setStartDate(format(subDays(new Date(), 30), 'yyyy-MM-dd'))
+                        setEndDate(format(new Date(), 'yyyy-MM-dd'))
+                      } else if (val === 'last_month') {
+                        const start = startOfMonth(subMonths(new Date(), 1))
+                        const end = endOfMonth(subMonths(new Date(), 1))
+                        setStartDate(format(start, 'yyyy-MM-dd'))
+                        setEndDate(format(end, 'yyyy-MM-dd'))
+                      }
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Atalhos..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="30">Últimos 30 dias</SelectItem>
+                      <SelectItem value="last_month">Mês Passado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {(activeTab === 'summary' ||
+                activeTab === 'shopping' ||
+                activeTab === 'trends' ||
+                activeTab === 'history') && (
+                <div className="space-y-1.5">
+                  <Label>Categoria</Label>
+                  <Select value={categoryId} onValueChange={setCategoryId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Todas" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_all_">Todas</SelectItem>
+                      {categories.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {activeTab === 'history' && (
                 <div className="space-y-1.5">
                   <Label>Funcionário</Label>
                   <Select value={userId} onValueChange={setUserId}>
@@ -428,72 +591,90 @@ export default function Reports() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-1.5">
-                  <Label>Área</Label>
-                  <Select
-                    value={areaId}
-                    onValueChange={(val) => {
-                      setAreaId(val)
-                      setSubareaId('_all_')
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Todas" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="_all_">Todas</SelectItem>
-                      {areas.map((a) => (
-                        <SelectItem key={a.id} value={a.id}>
-                          {a.name}
+              )}
+
+              <div className="space-y-1.5">
+                <Label>Área</Label>
+                <Select
+                  value={areaId}
+                  onValueChange={(val) => {
+                    setAreaId(val)
+                    setSubareaId('_all_')
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Todas" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_all_">Todas</SelectItem>
+                    {areas.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>
+                        {a.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label>Subárea</Label>
+                <Select
+                  value={subareaId}
+                  onValueChange={setSubareaId}
+                  disabled={areaId === '_all_'}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Todas" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_all_">Todas</SelectItem>
+                    {subareas
+                      .filter((s) => s.area_id === areaId)
+                      .map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.name}
                         </SelectItem>
                       ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Subárea</Label>
-                  <Select
-                    value={subareaId}
-                    onValueChange={setSubareaId}
-                    disabled={areaId === '_all_'}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Todas" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="_all_">Todas</SelectItem>
-                      {subareas
-                        .filter((s) => s.area_id === areaId)
-                        .map((s) => (
-                          <SelectItem key={s.id} value={s.id}>
-                            {s.name}
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+                  </SelectContent>
+                </Select>
               </div>
+            </div>
 
-              <div className="flex items-center justify-between gap-4 border-t border-zinc-100 pt-4 mt-2">
-                <div className="relative flex-1 max-w-sm">
-                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-zinc-400" />
-                  <Input
-                    type="text"
-                    placeholder="Buscar por produto..."
-                    className="pl-9"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
-                </div>
-                <Button variant="outline" size="sm" onClick={clearFilters}>
-                  <FilterX className="h-4 w-4 mr-2" /> Limpar
-                </Button>
+            <div className="flex items-center justify-between gap-4 border-t border-zinc-100 pt-4 mt-2">
+              <div className="relative flex-1 max-w-sm">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-zinc-400" />
+                <Input
+                  type="text"
+                  placeholder="Buscar por produto..."
+                  className="pl-9"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
               </div>
-            </CardContent>
-          </Card>
+              <Button variant="outline" size="sm" onClick={clearFilters}>
+                <FilterX className="h-4 w-4 mr-2" /> Limpar
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* HISTÓRICO TAB */}
+        <TabsContent value="history" className="space-y-6">
+          <div className="grid grid-cols-1 gap-4">
+            <Card className="bg-white shadow-sm border-zinc-200">
+              <CardContent className="p-6 flex items-center gap-4">
+                <div className="bg-emerald-100 p-3 rounded-full text-emerald-700">
+                  <CheckCircle2 className="w-6 h-6" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-zinc-500">Total de Registros (Período)</p>
+                  <p className="text-3xl font-bold text-zinc-900">{filteredCounts.length}</p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
 
           <div className="bg-white rounded-lg border border-zinc-200 shadow-sm overflow-hidden">
-            {/* Desktop Table */}
             <div className="hidden md:block overflow-x-auto">
               <Table>
                 <TableHeader className="bg-zinc-50">
@@ -553,7 +734,7 @@ export default function Reports() {
                   })}
                   {filteredCounts.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={7} className="h-24 text-center text-zinc-500">
+                      <TableCell colSpan={5} className="h-24 text-center text-zinc-500">
                         Nenhum registro encontrado com os filtros atuais.
                       </TableCell>
                     </TableRow>
@@ -561,7 +742,6 @@ export default function Reports() {
                 </TableBody>
               </Table>
             </div>
-
             {/* Mobile Cards */}
             <div className="md:hidden divide-y divide-zinc-100">
               {filteredCounts.map((count) => {
@@ -601,7 +781,6 @@ export default function Reports() {
                         </span>
                       </div>
                     </div>
-
                     <div className="flex justify-between items-center text-xs text-zinc-500 mt-1">
                       <span className="flex items-center gap-1">
                         <CalendarIcon className="w-3.5 h-3.5" />{' '}
@@ -621,22 +800,8 @@ export default function Reports() {
           </div>
         </TabsContent>
 
+        {/* SUMMARY TAB */}
         <TabsContent value="summary" className="space-y-6">
-          <Card className="shadow-sm border-zinc-200">
-            <CardContent className="p-4">
-              <div className="relative max-w-sm">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-zinc-400" />
-                <Input
-                  type="text"
-                  placeholder="Buscar por produto..."
-                  className="pl-9"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-              </div>
-            </CardContent>
-          </Card>
-
           <div className="bg-white rounded-lg border border-zinc-200 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <Table>
@@ -697,8 +862,182 @@ export default function Reports() {
             </div>
           </div>
         </TabsContent>
+
+        {/* SHOPPING LIST TAB */}
+        <TabsContent value="shopping" className="space-y-6">
+          <div className="bg-white rounded-lg border border-zinc-200 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader className="bg-zinc-50">
+                  <TableRow>
+                    <TableHead>Produto</TableHead>
+                    <TableHead>Categoria</TableHead>
+                    <TableHead className="text-right">Estoque Mínimo</TableHead>
+                    <TableHead className="text-right">Estoque Atual</TableHead>
+                    <TableHead className="text-right text-red-600 font-bold">
+                      Comprar / Produzir
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {shoppingList.map((item: any) => (
+                    <TableRow key={item.product.id}>
+                      <TableCell className="font-medium text-zinc-900">
+                        <div className="flex items-center gap-3">
+                          {item.product.image ? (
+                            <div className="w-8 h-8 rounded border border-zinc-200 overflow-hidden bg-zinc-50 shrink-0">
+                              <img
+                                src={`${pb.baseUrl}/api/files/products/${item.product.id}/${item.product.image}?thumb=100x100`}
+                                alt={item.product.name}
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                          ) : (
+                            <div className="w-8 h-8 rounded border border-zinc-200 bg-zinc-50 flex items-center justify-center shrink-0">
+                              <ImageIcon className="w-4 h-4 text-zinc-300" />
+                            </div>
+                          )}
+                          <div>
+                            {item.product.name}
+                            <span className="text-xs text-zinc-500 ml-1">
+                              ({item.product.unit})
+                            </span>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-xs">
+                          {getCategoryName(item.product.category_id)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right text-zinc-600">
+                        {item.product.min_stock || 0}{' '}
+                        <span className="text-xs font-normal text-zinc-400">
+                          {item.product.unit}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right font-medium">
+                        {item.total}{' '}
+                        <span className="text-xs font-normal text-zinc-400">
+                          {item.product.unit}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right font-bold text-red-600">
+                        +{item.need}{' '}
+                        <span className="text-xs font-normal opacity-80">{item.product.unit}</span>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {shoppingList.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={5} className="h-24 text-center text-zinc-500">
+                        Todos os produtos estão acima do estoque mínimo.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        </TabsContent>
+
+        {/* TRENDS TAB */}
+        <TabsContent value="trends" className="space-y-6">
+          <Card className="shadow-sm border-zinc-200 bg-white">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg font-serif">Consumo Total ao Longo do Tempo</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {consumptionData.chartData.length > 0 ? (
+                <ChartContainer
+                  config={{ consumption: { label: 'Consumo', color: 'hsl(var(--primary))' } }}
+                  className="h-[250px] w-full"
+                >
+                  <BarChart data={consumptionData.chartData}>
+                    <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                    <XAxis dataKey="date" tickLine={false} tickMargin={10} axisLine={false} />
+                    <YAxis tickLine={false} axisLine={false} width={40} />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <Bar
+                      dataKey="consumption"
+                      fill="var(--color-consumption)"
+                      radius={[4, 4, 0, 0]}
+                      maxBarSize={50}
+                    />
+                  </BarChart>
+                </ChartContainer>
+              ) : (
+                <div className="h-[250px] flex items-center justify-center text-zinc-500 text-sm">
+                  Nenhum dado de consumo para o período e filtros selecionados.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <div className="bg-white rounded-lg border border-zinc-200 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader className="bg-zinc-50">
+                  <TableRow>
+                    <TableHead>Produto</TableHead>
+                    <TableHead>Categoria</TableHead>
+                    <TableHead className="text-right">Total Consumido</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {consumptionData.list.map((item: any) => (
+                    <TableRow key={item.product.id}>
+                      <TableCell className="font-medium text-zinc-900">
+                        <div className="flex items-center gap-3">
+                          {item.product.image ? (
+                            <div className="w-8 h-8 rounded border border-zinc-200 overflow-hidden bg-zinc-50 shrink-0">
+                              <img
+                                src={`${pb.baseUrl}/api/files/products/${item.product.id}/${item.product.image}?thumb=100x100`}
+                                alt={item.product.name}
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                          ) : (
+                            <div className="w-8 h-8 rounded border border-zinc-200 bg-zinc-50 flex items-center justify-center shrink-0">
+                              <ImageIcon className="w-4 h-4 text-zinc-300" />
+                            </div>
+                          )}
+                          <div>
+                            {item.product.name}
+                            <span className="text-xs text-zinc-500 ml-1">
+                              ({item.product.unit})
+                            </span>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-xs">
+                          {getCategoryName(item.product.category_id)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right font-bold text-emerald-700">
+                        {item.consumed}{' '}
+                        <span className="text-xs font-normal text-zinc-500">
+                          {item.product.unit}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {consumptionData.list.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={3} className="h-24 text-center text-zinc-500">
+                        Nenhum consumo registrado.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        </TabsContent>
       </Tabs>
 
+      {/* PRODUCT BREAKDOWN MODAL */}
       <Dialog open={!!selectedProduct} onOpenChange={(open) => !open && setSelectedProduct(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -723,7 +1062,7 @@ export default function Reports() {
           <div className="space-y-4 py-4">
             {selectedProduct?.breakdown.length === 0 ? (
               <p className="text-sm text-zinc-500 text-center py-4">
-                Este produto não possui estoque vinculado a nenhuma subárea.
+                Este produto não possui estoque visível com os filtros atuais.
               </p>
             ) : (
               <div className="rounded-md border border-zinc-200 overflow-hidden">
@@ -759,75 +1098,16 @@ export default function Reports() {
         </DialogContent>
       </Dialog>
 
+      {/* EXPORT MODAL */}
       <Dialog open={exportModalOpen} onOpenChange={setExportModalOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Exportar Saldo de Estoque</DialogTitle>
+            <DialogTitle>Exportar Relatório</DialogTitle>
             <DialogDescription>
-              Selecione os filtros para exportar o saldo atual do estoque.
+              Exporta os dados atualmente visíveis na aba ativa (respeitando os filtros aplicados).
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <div className="space-y-1.5">
-              <Label>Área</Label>
-              <Select
-                value={exportAreaId}
-                onValueChange={(val) => {
-                  setExportAreaId(val)
-                  setExportSubareaId('_all_')
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Todas" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_all_">Todas</SelectItem>
-                  {areas.map((a) => (
-                    <SelectItem key={a.id} value={a.id}>
-                      {a.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Subárea</Label>
-              <Select
-                value={exportSubareaId}
-                onValueChange={setExportSubareaId}
-                disabled={exportAreaId === '_all_'}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Todas" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_all_">Todas</SelectItem>
-                  {subareas
-                    .filter((s) => s.area_id === exportAreaId)
-                    .map((s) => (
-                      <SelectItem key={s.id} value={s.id}>
-                        {s.name}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Categoria</Label>
-              <Select value={exportCategoryId} onValueChange={setExportCategoryId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Todas" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_all_">Todas</SelectItem>
-                  {categories.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
             <div className="space-y-1.5">
               <Label>Formato</Label>
               <Select
