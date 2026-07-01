@@ -197,6 +197,17 @@ export default function Products() {
       }
 
       setIsOpen(false)
+      setEditingId(null)
+      form.reset({
+        name: '',
+        unit: undefined,
+        validity_days: undefined as any,
+        min_stock: undefined as any,
+        category_id: '',
+        locations: [],
+        image: null,
+        active: true,
+      })
       toast.success('Produto salvo com sucesso!')
       await loadData()
     } catch (e) {
@@ -315,7 +326,22 @@ export default function Products() {
         </div>
         <Dialog open={isOpen} onOpenChange={handleOpenChange}>
           <DialogTrigger asChild>
-            <Button className="bg-emerald-600 hover:bg-emerald-700">
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700"
+              onClick={() => {
+                setEditingId(null)
+                form.reset({
+                  name: '',
+                  unit: undefined,
+                  validity_days: undefined as any,
+                  min_stock: undefined as any,
+                  category_id: '',
+                  locations: [],
+                  image: null,
+                  active: true,
+                })
+              }}
+            >
               <Plus className="w-4 h-4 mr-2" />
               Novo Produto
             </Button>

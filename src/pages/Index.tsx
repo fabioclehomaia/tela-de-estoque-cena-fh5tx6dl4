@@ -11,8 +11,18 @@ import { createInventoryCount } from '@/services/inventory_counts'
 import { CountableItem } from '@/types/inventory'
 import { InventoryArea } from '@/components/inventory/InventoryArea'
 import { useRealtime } from '@/hooks/use-realtime'
-import { Loader2, ClipboardList } from 'lucide-react'
+import { Loader2, ClipboardList, Play, ArrowLeft } from 'lucide-react'
 import { toast } from 'sonner'
+import { Button } from '@/components/ui/button'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+
+type WorkflowState = 'idle' | 'selecting' | 'counting'
 
 export default function Index() {
   const { user } = useAuth()
@@ -22,8 +32,11 @@ export default function Index() {
   const [levels, setLevels] = useState<InventoryLevel[]>([])
   const [loading, setLoading] = useState(true)
 
+  const [workflowState, setWorkflowState] = useState<WorkflowState>('idle')
+  const [selectedAreaId, setSelectedAreaId] = useState<string>('')
+  const [selectedSubareaId, setSelectedSubareaId] = useState<string>('')
+
   const [counts, setCounts] = useState<Record<string, number | null>>({})
-  const [completedAreas, setCompletedAreas] = useState<Record<string, boolean>>({})
 
   const loadData = async () => {
     try {
@@ -49,30 +62,49 @@ export default function Index() {
   useRealtime('inventory_levels', loadData)
   useRealtime('products', loadData)
 
+  const userAreas = useMemo(() => {
+    if (user?.role === 'admin' || user?.role === 'manager') return areas
+    const allowed = user?.area_ids || []
+    return areas.filter((a) => allowed.includes(a.id))
+  }, [areas, user])
+
+  const userSubareas = useMemo(() => {
+    let list = subareas
+    if (user?.role === 'employee') {
+      const allowed = user?.subarea_ids || []
+      list = subareas.filter((s) => allowed.includes(s.id))
+    }
+    return list.filter((s) => s.area_id === selectedAreaId)
+  }, [subareas, user, selectedAreaId])
+
+  useEffect(() => {
+    setSelectedSubareaId('')
+  }, [selectedAreaId])
+
+  const currentSubarea = useMemo(() => {
+    return subareas.find((s) => s.id === selectedSubareaId)
+  }, [subareas, selectedSubareaId])
+
+  const currentArea = useMemo(() => {
+    return areas.find((a) => a.id === selectedAreaId)
+  }, [areas, selectedAreaId])
+
   const items = useMemo(() => {
+    if (workflowState !== 'counting' || !selectedSubareaId) return []
     const list: CountableItem[] = []
 
-    let userAreas = areas
-    if (user?.area_id) {
-      userAreas = areas.filter((a) => a.id === user.area_id)
-    }
-
     levels.forEach((level) => {
+      if (level.subarea_id !== selectedSubareaId) return
+
       const product = products.find((p) => p.id === level.product_id)
       if (!product) return
-
-      const subarea = subareas.find((s) => s.id === level.subarea_id)
-      if (!subarea) return
-
-      const area = userAreas.find((a) => a.id === subarea.area_id)
-      if (!area) return
 
       list.push({
         id: level.id,
         productId: product.id,
-        subareaId: subarea.id,
+        subareaId: selectedSubareaId,
         name: product.name,
-        subareaName: subarea.name,
+        subareaName: currentSubarea?.name || '',
         unit: product.unit,
         expectedQty: level.quantity,
         actualQty: counts[level.id] !== undefined ? counts[level.id] : null,
@@ -83,33 +115,17 @@ export default function Index() {
     })
 
     return list
-  }, [areas, subareas, products, levels, counts, user])
-
-  const areasWithItems = useMemo(() => {
-    const map = new Map<string, CountableItem[]>()
-    items.forEach((item) => {
-      const subarea = subareas.find((s) => s.id === item.subareaId)
-      if (!subarea) return
-      const area = areas.find((a) => a.id === subarea.area_id)
-      if (!area) return
-
-      if (!map.has(area.name)) {
-        map.set(area.name, [])
-      }
-      map.get(area.name)!.push(item)
-    })
-    return Array.from(map.entries()).map(([name, items]) => ({ name, items }))
-  }, [items, subareas, areas])
+  }, [workflowState, selectedSubareaId, levels, products, counts, currentSubarea])
 
   const handleUpdateCount = (id: string, qty: number | null) => {
     setCounts((prev) => ({ ...prev, [id]: qty }))
   }
 
-  const handleCompleteArea = async (areaName: string, areaItems: CountableItem[]) => {
-    if (!user) return
+  const handleCompleteCount = async () => {
+    if (!user || !selectedSubareaId) return
 
     try {
-      const promises = areaItems.map(async (item) => {
+      const promises = items.map(async (item) => {
         if (item.actualQty !== null && item.actualQty !== undefined) {
           await updateInventoryLevel(item.id, {
             quantity: item.actualQty,
@@ -127,9 +143,12 @@ export default function Index() {
 
       await Promise.all(promises)
 
-      setCompletedAreas((prev) => ({ ...prev, [areaName]: true }))
-      toast.success(`Contagem da área ${areaName} finalizada!`)
+      toast.success(`Contagem da subárea ${currentSubarea?.name} finalizada!`)
       loadData()
+      setWorkflowState('idle')
+      setSelectedAreaId('')
+      setSelectedSubareaId('')
+      setCounts({})
     } catch (err) {
       console.error(err)
       toast.error('Erro ao salvar a contagem.')
@@ -144,21 +163,6 @@ export default function Index() {
     )
   }
 
-  if (areasWithItems.length === 0) {
-    return (
-      <div className="p-4 md:p-8 max-w-4xl mx-auto w-full">
-        <div className="text-center py-16 flex flex-col items-center bg-white rounded-xl border border-zinc-100 shadow-sm">
-          <ClipboardList className="w-12 h-12 mb-4 text-zinc-300" />
-          <h2 className="text-xl font-semibold text-zinc-900 mb-2">Nenhum produto para contar</h2>
-          <p className="text-zinc-500 max-w-md">
-            Você não possui áreas atribuídas com produtos ativos para realizar a contagem no
-            momento.
-          </p>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="p-4 md:p-8 max-w-4xl mx-auto w-full flex flex-col gap-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div>
@@ -168,22 +172,157 @@ export default function Index() {
         </p>
       </div>
 
-      <div className="space-y-12">
-        {areasWithItems.map((areaData) => (
-          <div key={areaData.name} className="space-y-4">
-            <h2 className="text-xl font-bold text-zinc-800 border-b border-zinc-200 pb-2">
-              {areaData.name}
-            </h2>
-            <InventoryArea
-              areaName={areaData.name}
-              items={areaData.items}
-              isCompleted={!!completedAreas[areaData.name]}
-              onUpdate={handleUpdateCount}
-              onComplete={() => handleCompleteArea(areaData.name, areaData.items)}
-            />
+      {workflowState === 'idle' && (
+        <div className="flex flex-col items-center justify-center py-24 text-center bg-white rounded-xl border border-zinc-100 shadow-sm">
+          <ClipboardList className="w-16 h-16 text-emerald-600 mb-6" />
+          <h2 className="text-2xl font-bold text-zinc-800 mb-2">Pronto para iniciar?</h2>
+          <p className="text-zinc-500 mb-8 max-w-md">
+            Inicie uma nova contagem de estoque para atualizar as quantidades dos produtos na sua
+            área de responsabilidade.
+          </p>
+          <Button
+            size="lg"
+            className="bg-emerald-600 hover:bg-emerald-700"
+            onClick={() => setWorkflowState('selecting')}
+          >
+            <Play className="w-4 h-4 mr-2 fill-current" />
+            Início de Contagem
+          </Button>
+        </div>
+      )}
+
+      {workflowState === 'selecting' && (
+        <div className="max-w-md mx-auto py-12 w-full animate-in fade-in duration-300">
+          <div className="mb-6 flex items-center gap-4">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-zinc-500 hover:text-zinc-900"
+              onClick={() => {
+                setWorkflowState('idle')
+                setSelectedAreaId('')
+                setSelectedSubareaId('')
+              }}
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </Button>
+            <h2 className="text-xl font-bold text-zinc-800">Selecione o local</h2>
           </div>
-        ))}
-      </div>
+
+          <div className="space-y-6 bg-white p-6 rounded-xl border border-zinc-200 shadow-sm">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-zinc-700">Área</label>
+              <Select value={selectedAreaId || undefined} onValueChange={setSelectedAreaId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione uma área" />
+                </SelectTrigger>
+                <SelectContent>
+                  {userAreas.length === 0 ? (
+                    <div className="p-2 text-sm text-zinc-500 text-center">
+                      Nenhuma área disponível
+                    </div>
+                  ) : (
+                    userAreas.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>
+                        {a.name}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-zinc-700">Subárea</label>
+              <Select
+                value={selectedSubareaId || undefined}
+                onValueChange={setSelectedSubareaId}
+                disabled={!selectedAreaId}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione uma subárea" />
+                </SelectTrigger>
+                <SelectContent>
+                  {userSubareas.length === 0 ? (
+                    <div className="p-2 text-sm text-zinc-500 text-center">
+                      Nenhuma subárea disponível
+                    </div>
+                  ) : (
+                    userSubareas.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="pt-4 flex gap-3">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  setWorkflowState('idle')
+                  setSelectedAreaId('')
+                  setSelectedSubareaId('')
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                disabled={!selectedAreaId || !selectedSubareaId}
+                onClick={() => setWorkflowState('counting')}
+              >
+                Confirmar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {workflowState === 'counting' && (
+        <div className="space-y-6 animate-in fade-in duration-300">
+          <div className="flex items-center gap-4 border-b border-zinc-200 pb-4">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-zinc-500 hover:text-zinc-900"
+              onClick={() => setWorkflowState('selecting')}
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </Button>
+            <div>
+              <h2 className="text-xl font-bold text-zinc-800">
+                {currentArea?.name} - {currentSubarea?.name}
+              </h2>
+              <p className="text-sm text-zinc-500">Contagem de produtos</p>
+            </div>
+          </div>
+
+          {items.length === 0 ? (
+            <div className="text-center py-16 flex flex-col items-center bg-white rounded-xl border border-zinc-100 shadow-sm">
+              <ClipboardList className="w-12 h-12 mb-4 text-zinc-300" />
+              <h2 className="text-xl font-semibold text-zinc-900 mb-2">
+                Nenhum produto para contar
+              </h2>
+              <p className="text-zinc-500 max-w-md">
+                Esta subárea não possui produtos cadastrados para contagem ou com estoque
+                configurado.
+              </p>
+            </div>
+          ) : (
+            <InventoryArea
+              areaName={`${currentArea?.name} - ${currentSubarea?.name}`}
+              items={items}
+              isCompleted={false}
+              onUpdate={handleUpdateCount}
+              onComplete={handleCompleteCount}
+            />
+          )}
+        </div>
+      )}
     </div>
   )
 }

@@ -6,8 +6,8 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useToast } from '@/hooks/use-toast'
 import { extractFieldErrors } from '@/lib/pocketbase/errors'
-import { getUsers, createUser, updateUser } from '@/services/users'
-import { User, UserRole } from '@/hooks/use-auth'
+import { getUsers, createUser, updateUser, User } from '@/services/users'
+import { UserRole } from '@/hooks/use-auth'
 import { useRealtime } from '@/hooks/use-realtime'
 import { cn } from '@/lib/utils'
 import { UserForm, UserFormValues } from '@/components/users/UserForm'
@@ -16,6 +16,7 @@ import pb from '@/lib/pocketbase/client'
 export default function Users() {
   const [users, setUsers] = useState<User[]>([])
   const [areas, setAreas] = useState<{ id: string; name: string }[]>([])
+  const [subareas, setSubareas] = useState<{ id: string; name: string; area_id: string }[]>([])
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingUser, setEditingUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
@@ -23,12 +24,16 @@ export default function Users() {
 
   const loadData = async () => {
     try {
-      const [usersData, areasData] = await Promise.all([
+      const [usersData, areasData, subareasData] = await Promise.all([
         getUsers(),
         pb.collection('areas').getFullList<{ id: string; name: string }>({ sort: 'name' }),
+        pb
+          .collection('subareas')
+          .getFullList<{ id: string; name: string; area_id: string }>({ sort: 'name' }),
       ])
       setUsers(usersData)
       setAreas(areasData)
+      setSubareas(subareasData)
     } catch {
       toast({ variant: 'destructive', title: 'Erro ao carregar usuários' })
     } finally {
@@ -125,7 +130,14 @@ export default function Users() {
           <DialogHeader>
             <DialogTitle>{editingUser ? 'Editar Usuário' : 'Novo Usuário'}</DialogTitle>
           </DialogHeader>
-          {isDialogOpen && <UserForm initialData={editingUser} areas={areas} onSubmit={onSubmit} />}
+          {isDialogOpen && (
+            <UserForm
+              initialData={editingUser}
+              areas={areas}
+              subareas={subareas}
+              onSubmit={onSubmit}
+            />
+          )}
         </DialogContent>
       </Dialog>
 
@@ -169,14 +181,58 @@ export default function Users() {
                       {user.phone || '-'}
                     </span>
                   </div>
-                  {user.expand?.area_id && (
-                    <Badge
-                      variant="outline"
-                      className="mt-2 text-xs bg-zinc-50 text-zinc-600 border-zinc-200"
-                    >
-                      Área: {user.expand.area_id.name}
-                    </Badge>
-                  )}
+                  <div className="mt-3">
+                    <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+                      Permissões
+                    </span>
+                    <div className="flex items-center gap-2 mt-1">
+                      {user.role === 'admin' ? (
+                        <Badge
+                          variant="outline"
+                          className="bg-purple-50 text-purple-700 border-purple-200 font-normal text-[11px]"
+                        >
+                          Acesso Total
+                        </Badge>
+                      ) : (
+                        <>
+                          <Badge
+                            variant="outline"
+                            className="bg-emerald-50 text-emerald-700 border-emerald-200 font-medium text-[11px]"
+                          >
+                            {Array.isArray(user.area_ids)
+                              ? user.area_ids.length
+                              : user.area_id
+                                ? 1
+                                : 0}{' '}
+                            {(Array.isArray(user.area_ids)
+                              ? user.area_ids.length
+                              : user.area_id
+                                ? 1
+                                : 0) === 1
+                              ? 'Área'
+                              : 'Áreas'}
+                          </Badge>
+                          <Badge
+                            variant="outline"
+                            className="bg-blue-50 text-blue-700 border-blue-200 font-medium text-[11px]"
+                          >
+                            {Array.isArray(user.subarea_ids)
+                              ? user.subarea_ids.length
+                              : user.subarea_id
+                                ? 1
+                                : 0}{' '}
+                            {(Array.isArray(user.subarea_ids)
+                              ? user.subarea_ids.length
+                              : user.subarea_id
+                                ? 1
+                                : 0) === 1
+                              ? 'Subárea'
+                              : 'Subáreas'}
+                          </Badge>
+                        </>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
               <div className="flex items-center gap-3 w-full sm:w-auto pt-3 sm:pt-0 border-t sm:border-0 border-zinc-100 mt-2 sm:mt-0">
