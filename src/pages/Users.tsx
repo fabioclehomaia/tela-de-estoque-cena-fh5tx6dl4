@@ -239,6 +239,20 @@ export default function Users() {
                 <div className="flex-1 sm:flex-none">
                   <RoleBadge role={user.role} />
                 </div>
+                <div className="text-center px-2 shrink-0">
+                  <div className="text-[10px] text-zinc-500 uppercase font-semibold tracking-wider">
+                    Áreas Atribuídas
+                  </div>
+                  <div className="text-lg font-bold text-emerald-800">
+                    {user.role === 'admin'
+                      ? 'Todas'
+                      : Array.isArray(user.area_ids)
+                        ? user.area_ids.length
+                        : user.area_id
+                          ? 1
+                          : 0}
+                  </div>
+                </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <Button
                     variant="outline"

@@ -4,6 +4,8 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { createInventoryCount } from '@/services/inventory_counts'
+import { toast } from 'sonner'
 
 interface ProductCardProps {
   item: CountableItem
@@ -86,9 +88,21 @@ export function ProductCard({ item, onUpdate, disabled }: ProductCardProps) {
         {!disabled && (
           <button
             type="button"
-            onClick={() => {
+            onClick={async () => {
               setLocalVal('0')
               onUpdate(item.id, 0)
+              try {
+                await createInventoryCount({
+                  product_id: item.productId,
+                  subarea_id: item.subareaId,
+                  user_id: pb.authStore.record?.id,
+                  previous_quantity: item.expectedQty,
+                  counted_quantity: 0,
+                })
+                toast.success('Produto zerado e registrado.')
+              } catch {
+                toast.error('Erro ao registrar contagem.')
+              }
             }}
             className="text-[10px] uppercase font-bold text-amber-700 bg-amber-50 border border-amber-200 py-1 rounded hover:bg-amber-100 transition-colors"
           >

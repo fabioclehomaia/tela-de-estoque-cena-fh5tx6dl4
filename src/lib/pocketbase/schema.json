@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-14T13:19:21.248Z",
+  "generatedAt": "2026-07-01T01:02:22.441Z",
   "collections": [
     {
       "name": "users",
@@ -268,6 +268,12 @@
           "type": "bool",
           "required": false,
           "system": false
+        },
+        {
+          "name": "price",
+          "type": "number",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": []
@@ -382,6 +388,47 @@
       "indexes": [
         "CREATE UNIQUE INDEX idx_inv_levels_prod_sub ON inventory_levels (product_id, subarea_id)"
       ]
+    },
+    {
+      "name": "product_price_history",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != ''",
+        "update": null,
+        "delete": null
+      },
+      "fields": [
+        {
+          "name": "product_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "products"
+        },
+        {
+          "name": "price",
+          "type": "number",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": []
     }
   ]
 }

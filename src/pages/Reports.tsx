@@ -22,6 +22,7 @@ import {
   ShoppingCart,
   TrendingUp,
   ImageIcon,
+  DollarSign,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -51,13 +52,15 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Line, LineChart } from 'recharts'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
 import { getInventoryCounts, InventoryCount } from '@/services/inventory_counts'
 import { getInventoryLevels, InventoryLevel } from '@/services/inventory_levels'
 import { getAreas, getSubareas, getCategories, Area, Subarea, Category } from '@/services/inventory'
 import { getUsers, User } from '@/services/users'
 import { getProducts, Product } from '@/services/products'
+import { getProductPriceHistory, ProductPriceHistory } from '@/services/product_price_history'
 import pb from '@/lib/pocketbase/client'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
@@ -87,6 +90,8 @@ export default function Reports() {
   const [selectedProduct, setSelectedProduct] = useState<any>(null)
   const [exportModalOpen, setExportModalOpen] = useState(false)
   const [exportFormat, setExportFormat] = useState<'csv' | 'pdf'>('pdf')
+  const [priceHistory, setPriceHistory] = useState<ProductPriceHistory[]>([])
+  const [selectedPriceProducts, setSelectedPriceProducts] = useState<string[]>([])
 
   useEffect(() => {
     const loadData = async () => {
@@ -100,6 +105,7 @@ export default function Reports() {
           fetchedUsers,
           fetchedLevels,
           fetchedProducts,
+          fetchedPriceHistory,
         ] = await Promise.all([
           getInventoryCounts(),
           getAreas(),
@@ -108,6 +114,7 @@ export default function Reports() {
           getUsers(),
           getInventoryLevels(),
           getProducts(),
+          getProductPriceHistory(),
         ])
         setCounts(fetchedCounts)
         setAreas(fetchedAreas)
@@ -116,6 +123,7 @@ export default function Reports() {
         setUsers(fetchedUsers)
         setLevels(fetchedLevels)
         setProducts(fetchedProducts)
+        setPriceHistory(fetchedPriceHistory)
       } catch (error) {
         toast({
           title: 'Erro',
@@ -327,6 +335,50 @@ export default function Reports() {
     return { list, chartData }
   }, [counts, products, startDate, endDate, categoryId, areaId, subareaId, searchQuery])
 
+  const priceEvolutionData = useMemo(() => {
+    const history = priceHistory.filter((h) => {
+      const product = products.find((p) => p.id === h.product_id)
+      if (!product) return false
+      if (startDate && endDate) {
+        const date = safeDate(h.created)
+        if (
+          !isWithinInterval(date, {
+            start: startOfDay(safeDate(startDate)),
+            end: endOfDay(safeDate(endDate)),
+          })
+        )
+          return false
+      } else if (startDate) {
+        if (safeDate(h.created) < startOfDay(safeDate(startDate))) return false
+      } else if (endDate) {
+        if (safeDate(h.created) > endOfDay(safeDate(endDate))) return false
+      }
+      if (selectedPriceProducts.length > 0 && !selectedPriceProducts.includes(h.product_id))
+        return false
+      return true
+    })
+
+    const dateMap = new Map<string, { ts: number; display: string } & Record<string, number>>()
+    history.forEach((h) => {
+      const product = products.find((p) => p.id === h.product_id)
+      if (!product) return
+      const d = startOfDay(safeDate(h.created))
+      const ts = d.getTime()
+      const key = ts.toString()
+      if (!dateMap.has(key)) {
+        dateMap.set(key, { ts, display: format(d, 'dd/MM/yyyy') })
+      }
+      dateMap.get(key)![product.name] = h.price
+    })
+
+    const chartData = Array.from(dateMap.values()).sort((a, b) => a.ts - b.ts)
+    const chartProducts = Array.from(new Set(history.map((h) => h.product_id)))
+      .map((id) => products.find((p) => p.id === id))
+      .filter(Boolean) as Product[]
+
+    return { chartData, chartProducts }
+  }, [priceHistory, products, startDate, endDate, selectedPriceProducts])
+
   // --- EXPORT LOGIC ---
   const handleExport = () => {
     let data: any[] = []
@@ -476,7 +528,7 @@ export default function Reports() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 mb-6 h-auto">
+        <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 mb-6 h-auto">
           <TabsTrigger
             value="history"
             className="flex flex-col md:flex-row items-center gap-2 py-2"
@@ -500,12 +552,15 @@ export default function Reports() {
           <TabsTrigger value="trends" className="flex flex-col md:flex-row items-center gap-2 py-2">
             <TrendingUp className="w-4 h-4" /> <span className="hidden md:inline">Tendências</span>
           </TabsTrigger>
+          <TabsTrigger value="prices" className="flex flex-col md:flex-row items-center gap-2 py-2">
+            <DollarSign className="w-4 h-4" /> <span className="hidden md:inline">Preços</span>
+          </TabsTrigger>
         </TabsList>
 
         <Card className="shadow-sm border-zinc-200 mb-6 bg-white">
           <CardContent className="p-4 space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 items-end">
-              {(activeTab === 'history' || activeTab === 'trends') && (
+              {(activeTab === 'history' || activeTab === 'trends' || activeTab === 'prices') && (
                 <div className="space-y-1.5 lg:col-span-2">
                   <Label>Período</Label>
                   <div className="flex items-center gap-2">
@@ -1034,6 +1089,88 @@ export default function Reports() {
               </Table>
             </div>
           </div>
+        </TabsContent>
+
+        {/* PRICES TAB */}
+        <TabsContent value="prices" className="space-y-6">
+          <Card className="shadow-sm border-zinc-200 bg-white">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg font-serif">Relatório Evolutivo de Preços</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="mb-4">
+                <Label className="mb-2 block">Selecionar Produtos</Label>
+                <div className="max-h-40 overflow-y-auto border border-zinc-200 rounded-md p-3 space-y-2 bg-zinc-50/50">
+                  {products.length === 0 && (
+                    <p className="text-sm text-zinc-500 text-center py-2">
+                      Nenhum produto cadastrado.
+                    </p>
+                  )}
+                  {products.map((p) => (
+                    <label
+                      key={p.id}
+                      className="flex items-center gap-2 text-sm cursor-pointer hover:text-emerald-700"
+                    >
+                      <Checkbox
+                        checked={selectedPriceProducts.includes(p.id)}
+                        onCheckedChange={(checked) => {
+                          if (checked === true) {
+                            setSelectedPriceProducts((prev) => [...prev, p.id])
+                          } else {
+                            setSelectedPriceProducts((prev) => prev.filter((id) => id !== p.id))
+                          }
+                        }}
+                      />
+                      {p.name}
+                    </label>
+                  ))}
+                </div>
+                {selectedPriceProducts.length > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="mt-2 text-xs text-zinc-500"
+                    onClick={() => setSelectedPriceProducts([])}
+                  >
+                    Limpar seleção
+                  </Button>
+                )}
+              </div>
+
+              {priceEvolutionData.chartData.length > 0 ? (
+                <ChartContainer
+                  config={Object.fromEntries(
+                    priceEvolutionData.chartProducts.map((p, i) => [
+                      p.name,
+                      { label: p.name, color: `hsl(${(i * 60) % 360}, 70%, 50%)` },
+                    ]),
+                  )}
+                  className="h-[300px] w-full"
+                >
+                  <LineChart data={priceEvolutionData.chartData}>
+                    <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                    <XAxis dataKey="display" tickLine={false} tickMargin={10} axisLine={false} />
+                    <YAxis tickLine={false} axisLine={false} width={60} />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    {priceEvolutionData.chartProducts.map((p, i) => (
+                      <Line
+                        key={p.id}
+                        type="monotone"
+                        dataKey={p.name}
+                        stroke={`hsl(${(i * 60) % 360}, 70%, 50%)`}
+                        strokeWidth={2}
+                        dot={{ r: 4 }}
+                      />
+                    ))}
+                  </LineChart>
+                </ChartContainer>
+              ) : (
+                <div className="h-[300px] flex items-center justify-center text-zinc-500 text-sm">
+                  Selecione produtos e um período para visualizar a evolução de preços.
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
 

@@ -59,7 +59,10 @@ interface UserFormProps {
 }
 
 const getIdsArray = (fieldValue: any): string[] => {
-  if (Array.isArray(fieldValue)) return fieldValue
+  if (!fieldValue) return []
+  if (Array.isArray(fieldValue)) {
+    return fieldValue.map((v: any) => (typeof v === 'string' ? v : v?.id)).filter(Boolean)
+  }
   if (typeof fieldValue === 'string' && fieldValue.trim() !== '') return [fieldValue]
   return []
 }
@@ -292,15 +295,33 @@ export function UserForm({ initialData, areas = [], subareas = [], onSubmit }: U
                           </span>
                         </div>
                         {subs.length > 0 && (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 text-xs text-zinc-600 hover:text-emerald-700 hover:bg-emerald-100/50"
-                            onClick={() => {
-                              const currentAreas = form.getValues('area_ids') || []
-                              const currentSubs = form.getValues('subarea_ids') || []
-                              if (allSelected) {
+                          <div className="flex gap-1">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 text-xs text-emerald-700 hover:bg-emerald-100/50"
+                              onClick={() => {
+                                const currentAreas = form.getValues('area_ids') || []
+                                const currentSubs = form.getValues('subarea_ids') || []
+                                if (!currentAreas.includes(area.id)) currentAreas.push(area.id)
+                                form.setValue('area_ids', currentAreas, { shouldValidate: true })
+                                const newSubs = new Set([...currentSubs, ...subs.map((s) => s.id)])
+                                form.setValue('subarea_ids', Array.from(newSubs), {
+                                  shouldValidate: true,
+                                })
+                              }}
+                            >
+                              Marcar Todas
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 text-xs text-red-500 hover:bg-red-50"
+                              onClick={() => {
+                                const currentAreas = form.getValues('area_ids') || []
+                                const currentSubs = form.getValues('subarea_ids') || []
                                 form.setValue(
                                   'area_ids',
                                   currentAreas.filter((id) => id !== area.id),
@@ -311,18 +332,11 @@ export function UserForm({ initialData, areas = [], subareas = [], onSubmit }: U
                                   currentSubs.filter((id) => !subs.some((s) => s.id === id)),
                                   { shouldValidate: true },
                                 )
-                              } else {
-                                if (!currentAreas.includes(area.id)) currentAreas.push(area.id)
-                                form.setValue('area_ids', currentAreas, { shouldValidate: true })
-                                const newSubs = new Set([...currentSubs, ...subs.map((s) => s.id)])
-                                form.setValue('subarea_ids', Array.from(newSubs), {
-                                  shouldValidate: true,
-                                })
-                              }
-                            }}
-                          >
-                            {allSelected ? 'Desmarcar Todas' : 'Marcar Todas'}
-                          </Button>
+                              }}
+                            >
+                              Desmarcar
+                            </Button>
+                          </div>
                         )}
                       </div>
 

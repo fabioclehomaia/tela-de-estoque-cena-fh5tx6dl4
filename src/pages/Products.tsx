@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useForm, useFieldArray } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Plus, Edit, Trash2, PackageSearch, MapPin, ImageIcon, AlertCircle } from 'lucide-react'
+import { Plus, Edit, Trash2, PackageSearch, MapPin, ImageIcon } from 'lucide-react'
 import {
   getProducts,
   createProduct,
@@ -73,6 +73,10 @@ const schema = z
       .string()
       .transform((v) => (v ? Number(v) : null))
       .optional(),
+    price: z
+      .string()
+      .transform((v) => (v ? Number(v) : null))
+      .optional(),
     category_id: z.string().min(1, 'Selecione a categoria'),
     locations: z.array(locationSchema).optional().default([]),
     image: z.any().optional(),
@@ -109,6 +113,7 @@ export default function Products() {
       unit: undefined,
       validity_days: undefined as any,
       min_stock: undefined as any,
+      price: undefined as any,
       category_id: '',
       locations: [],
       image: null,
@@ -158,6 +163,10 @@ export default function Products() {
         formData.append('image', '')
       }
 
+      if (data.price !== null && data.price !== undefined) {
+        formData.append('price', data.price.toString())
+      }
+
       let productId = editingId
       if (editingId) {
         await updateProduct(editingId, formData)
@@ -203,6 +212,7 @@ export default function Products() {
         unit: undefined,
         validity_days: undefined as any,
         min_stock: undefined as any,
+        price: undefined as any,
         category_id: '',
         locations: [],
         image: null,
@@ -225,6 +235,7 @@ export default function Products() {
       unit: p.unit,
       validity_days: p.validity_days?.toString() as any,
       min_stock: p.min_stock?.toString() as any,
+      price: p.price?.toString() as any,
       category_id: p.category_id,
       locations: pLevels.map((l) => ({
         area_id: l.expand?.subarea_id?.area_id || '',
@@ -247,6 +258,7 @@ export default function Products() {
         unit: undefined,
         validity_days: undefined as any,
         min_stock: undefined as any,
+        price: undefined as any,
         category_id: '',
         locations: [],
         image: null,
@@ -262,38 +274,6 @@ export default function Products() {
       toast.success('Produto excluído')
     } catch (e) {
       toast.error('Erro ao excluir.')
-    }
-  }
-
-  const handleZeroCount = async (product: Product) => {
-    if (
-      !window.confirm(
-        `Tem certeza que deseja zerar o estoque de "${product.name}" em todas as áreas?`,
-      )
-    )
-      return
-
-    const pLevels = levels.filter((l) => l.product_id === product.id && l.quantity > 0)
-    if (pLevels.length === 0) {
-      toast.info('O estoque já está zerado.')
-      return
-    }
-
-    try {
-      for (const l of pLevels) {
-        await updateInventoryLevel(l.id, { quantity: 0 })
-        await pb.collection('inventory_counts').create({
-          product_id: product.id,
-          subarea_id: l.subarea_id,
-          user_id: pb.authStore.record?.id,
-          previous_quantity: l.quantity,
-          counted_quantity: 0,
-        })
-      }
-      toast.success('Estoque zerado com sucesso.')
-      await loadData()
-    } catch (err) {
-      toast.error('Erro ao zerar estoque.')
     }
   }
 
@@ -335,6 +315,7 @@ export default function Products() {
                   unit: undefined,
                   validity_days: undefined as any,
                   min_stock: undefined as any,
+                  price: undefined as any,
                   category_id: '',
                   locations: [],
                   image: null,
@@ -350,7 +331,7 @@ export default function Products() {
             <DialogHeader>
               <DialogTitle>{editingId ? 'Editar Produto' : 'Novo Produto'}</DialogTitle>
             </DialogHeader>
-            <Form {...form}>
+            <Form {...form} key={editingId || 'new'}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                 <FormField
                   control={form.control}
@@ -444,6 +425,26 @@ export default function Products() {
                     )}
                   />
                 </div>
+
+                <FormField
+                  control={form.control}
+                  name="price"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Preço/Valor (R$)</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          step="any"
+                          placeholder="0,00"
+                          {...field}
+                          value={field.value ?? ''}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
                 <FormField
                   control={form.control}
@@ -783,15 +784,6 @@ export default function Products() {
               </div>
 
               <div className="flex items-center gap-1.5">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleZeroCount(p)}
-                  className="text-xs h-8 text-amber-700 border-amber-200 hover:bg-amber-50 hover:text-amber-800"
-                >
-                  <AlertCircle className="w-3.5 h-3.5 mr-1" />
-                  Zerar
-                </Button>
                 <Button
                   size="icon"
                   variant="ghost"

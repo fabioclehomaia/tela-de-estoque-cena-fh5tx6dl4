@@ -7,6 +7,7 @@ export interface Product {
   unit: 'kg' | 'litro' | 'unidade' | 'caixa'
   validity_days?: number
   min_stock?: number
+  price?: number
   category_id: string
   active: boolean
   image?: string
