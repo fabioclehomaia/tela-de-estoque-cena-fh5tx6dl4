@@ -23,6 +23,8 @@ import { Switch } from '@/components/ui/switch'
 import { Checkbox } from '@/components/ui/checkbox'
 import { User } from '@/services/users'
 import { cn } from '@/lib/utils'
+import { PasswordInput } from '@/components/users/PasswordInput'
+import { CurrentPermissions } from '@/components/users/CurrentPermissions'
 
 const userSchema = z
   .object({
@@ -33,7 +35,11 @@ const userSchema = z
     active: z.boolean().default(true),
     area_ids: z.array(z.string()).default([]),
     subarea_ids: z.array(z.string()).default([]),
-    password: z.string().min(8, 'Mínimo 8 caracteres').optional().or(z.literal('')),
+    password: z
+      .string()
+      .regex(/^\d{6}$/, 'A senha deve conter exatamente 6 dígitos numéricos')
+      .optional()
+      .or(z.literal('')),
   })
   .superRefine((data, ctx) => {
     if (data.role !== 'admin') {
@@ -201,6 +207,25 @@ export function UserForm({ initialData, areas = [], subareas = [], onSubmit }: U
 
           {form.watch('role') !== 'admin' && (
             <div className="md:col-span-3 space-y-3">
+              {initialData && (
+                <CurrentPermissions
+                  areas={areas}
+                  subareas={subareas}
+                  selectedAreaIds={[
+                    ...new Set([
+                      ...getIdsArray(initialData?.area_ids),
+                      ...getIdsArray(initialData?.area_id),
+                    ]),
+                  ]}
+                  selectedSubareaIds={[
+                    ...new Set([
+                      ...getIdsArray(initialData?.subarea_ids),
+                      ...getIdsArray(initialData?.subarea_id),
+                    ]),
+                  ]}
+                  isAdmin={false}
+                />
+              )}
               <div className="flex items-start justify-between">
                 <div>
                   <FormLabel>Permissões de Acesso</FormLabel>
@@ -398,10 +423,20 @@ export function UserForm({ initialData, areas = [], subareas = [], onSubmit }: U
           name="password"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>{initialData ? 'Nova Senha (opcional)' : 'Senha'}</FormLabel>
+              <FormLabel>{initialData ? 'Nova Senha (6 dígitos)' : 'Senha (6 dígitos)'}</FormLabel>
               <FormControl>
-                <Input type="password" placeholder="******" {...field} />
+                <PasswordInput
+                  value={field.value || ''}
+                  onChange={field.onChange}
+                  placeholder="000000"
+                  hasExistingPassword={!!initialData}
+                />
               </FormControl>
+              {initialData && (
+                <p className="text-xs text-zinc-500">
+                  A senha atual está protegida. Digite uma nova senha de 6 dígitos para alterá-la.
+                </p>
+              )}
               <FormMessage />
             </FormItem>
           )}

@@ -66,7 +66,7 @@ export default function Users() {
         await updateUser(editingUser.id, payload)
       } else {
         if (!values.password) {
-          setError('password', { message: 'Senha obrigatória para novos usuários' })
+          setError('password', { message: 'Senha obrigatória: 6 dígitos numéricos' })
           return
         }
         await createUser({ ...values, password: values.password, passwordConfirm: values.password })
@@ -126,7 +126,7 @@ export default function Users() {
       </div>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-[425px]">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingUser ? 'Editar Usuário' : 'Novo Usuário'}</DialogTitle>
           </DialogHeader>
