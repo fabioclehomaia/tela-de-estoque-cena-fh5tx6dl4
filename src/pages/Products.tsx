@@ -12,6 +12,7 @@ import {
   Product,
 } from '@/services/products'
 import { getCategories, Category, getSubareas, Subarea, Area } from '@/services/inventory'
+import { useAuth } from '@/hooks/use-auth'
 import {
   getInventoryLevels,
   createInventoryLevel,
@@ -105,6 +106,9 @@ export default function Products() {
   const [filterCategory, setFilterCategory] = useState<string>('all')
   const [filterArea, setFilterArea] = useState<string>('all')
   const [filterSubarea, setFilterSubarea] = useState<string>('all')
+
+  const { user } = useAuth()
+  const canDelete = user?.role === 'admin'
 
   const form = useForm<z.infer<typeof schema>>({
     resolver: zodResolver(schema),
@@ -792,14 +796,16 @@ export default function Products() {
                 >
                   <Edit className="w-4 h-4" />
                 </Button>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => handleDelete(p.id)}
-                  className="h-8 w-8 text-zinc-500 hover:text-red-600 hover:bg-red-50"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
+                {canDelete && (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => handleDelete(p.id)}
+                    className="h-8 w-8 text-zinc-500 hover:text-red-600 hover:bg-red-50"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                )}
               </div>
             </div>
           </div>
