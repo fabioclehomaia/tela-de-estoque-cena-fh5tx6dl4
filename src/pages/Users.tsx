@@ -71,7 +71,10 @@ export default function Users() {
         }
         await createUser({ ...values, password: values.password, passwordConfirm: values.password })
       }
-      toast({ title: 'Salvo com sucesso', className: 'bg-emerald-800 text-white border-none' })
+      toast({
+        title: 'Alterações salvas com sucesso',
+        className: 'bg-emerald-800 text-white border-none',
+      })
       setIsDialogOpen(false)
     } catch (err) {
       const errors = extractFieldErrors(err)
