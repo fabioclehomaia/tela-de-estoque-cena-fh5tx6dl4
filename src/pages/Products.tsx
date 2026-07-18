@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useForm, useFieldArray } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Plus, Edit, Trash2, PackageSearch, MapPin, ImageIcon } from 'lucide-react'
+import { Plus, Edit, Trash2, PackageSearch, MapPin, ImageIcon, Loader2 } from 'lucide-react'
 import {
   getProducts,
   createProduct,
@@ -163,7 +163,7 @@ export default function Products() {
 
       if (data.image instanceof File) {
         formData.append('image', data.image)
-      } else if (data.image === null) {
+      } else if (data.image === null && editingId) {
         formData.append('image', '')
       }
 
@@ -224,9 +224,18 @@ export default function Products() {
       })
       toast.success('Produto salvo com sucesso!')
       await loadData()
-    } catch (e) {
+    } catch (e: any) {
       const errs = extractFieldErrors(e)
-      Object.keys(errs).forEach((k) => form.setError(k as any, { message: errs[k] }))
+      if (Object.keys(errs).length > 0) {
+        Object.keys(errs).forEach((k) => form.setError(k as any, { message: errs[k] }))
+      } else {
+        const msg =
+          e?.response?.message ||
+          (e?.status === 413
+            ? 'Arquivo muito grande. Máximo 5MB.'
+            : 'Erro ao salvar produto. Verifique os dados e tente novamente.')
+        toast.error(msg)
+      }
     }
   }
 
@@ -632,8 +641,19 @@ export default function Products() {
                   </div>
                 </div>
 
-                <Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700">
-                  Salvar Produto
+                <Button
+                  type="submit"
+                  disabled={form.formState.isSubmitting}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700"
+                >
+                  {form.formState.isSubmitting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Salvando...
+                    </>
+                  ) : (
+                    'Salvar Produto'
+                  )}
                 </Button>
               </form>
             </Form>
