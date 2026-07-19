@@ -140,6 +140,16 @@ export default function Reports() {
   const getCategoryName = (id: string) =>
     categories.find((c) => c.id === id)?.name || 'Desconhecida'
 
+  const latestCountByProduct = useMemo(() => {
+    const map = new Map<string, InventoryCount>()
+    for (const count of counts) {
+      if (!map.has(count.product_id)) {
+        map.set(count.product_id, count)
+      }
+    }
+    return map
+  }, [counts])
+
   // Master lookup for areas/subareas associated with each product (based on levels + history)
   const productLocations = useMemo(() => {
     const map = new Map<string, { areas: Set<string>; subareas: Set<string> }>()
@@ -387,8 +397,18 @@ export default function Reports() {
 
     if (activeTab === 'summary') {
       title = 'Estoque Atual'
-      headers = ['Produto', 'Categoria', 'Unidade', 'Quantidade']
-      data = summaryByProduct.map((row) => [row.name, row.category, row.unit, row.total])
+      headers = ['Produto', 'Categoria', 'Unidade', 'Quantidade', 'Última Contagem', 'Responsável']
+      data = summaryByProduct.map((row) => {
+        const lc = row.latestCount
+        return [
+          row.name,
+          row.category,
+          row.unit,
+          row.total,
+          lc ? format(safeDate(lc.created), 'dd/MM/yyyy HH:mm') : 'Sem contagem',
+          lc?.expand?.user_id?.name || lc?.expand?.user_id?.email || '-',
+        ]
+      })
     } else if (activeTab === 'shopping') {
       title = 'Lista de Compras'
       headers = [
@@ -865,6 +885,8 @@ export default function Reports() {
                     <TableHead>Produto</TableHead>
                     <TableHead>Categoria</TableHead>
                     <TableHead className="text-right">Quantidade Total</TableHead>
+                    <TableHead>Última Contagem</TableHead>
+                    <TableHead>Responsável</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -903,11 +925,24 @@ export default function Reports() {
                       <TableCell className="text-right font-bold text-emerald-700">
                         {item.total}
                       </TableCell>
+                      <TableCell className="text-zinc-600 whitespace-nowrap text-sm">
+                        {item.latestCount ? (
+                          format(safeDate(item.latestCount.created), 'dd/MM/yyyy HH:mm')
+                        ) : (
+                          <span className="text-zinc-400">Sem contagem</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-zinc-600 text-sm">
+                        {item.latestCount?.expand?.user_id?.name ||
+                          item.latestCount?.expand?.user_id?.email || (
+                            <span className="text-zinc-400">-</span>
+                          )}
+                      </TableCell>
                     </TableRow>
                   ))}
                   {summaryByProduct.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={3} className="h-24 text-center text-zinc-500">
+                      <TableCell colSpan={5} className="h-24 text-center text-zinc-500">
                         Nenhum produto encontrado.
                       </TableCell>
                     </TableRow>
