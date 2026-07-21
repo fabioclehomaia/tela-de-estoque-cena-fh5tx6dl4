@@ -143,7 +143,7 @@ export default function Index() {
 
       await Promise.all(promises)
 
-      toast.success(`Contagem da subárea ${currentSubarea?.name} finalizada!`)
+      toast.success('Alterações salvas com sucesso')
       loadData()
       setWorkflowState('idle')
       setSelectedAreaId('')
