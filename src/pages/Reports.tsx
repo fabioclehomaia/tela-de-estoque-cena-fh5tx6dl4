@@ -23,6 +23,8 @@ import {
   TrendingUp,
   ImageIcon,
   DollarSign,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -88,6 +90,8 @@ export default function Reports() {
   const [searchQuery, setSearchQuery] = useState('')
 
   const [selectedProduct, setSelectedProduct] = useState<any>(null)
+  const [sortField, setSortField] = useState<'name' | 'category' | 'quantity'>('name')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
   const [exportModalOpen, setExportModalOpen] = useState(false)
   const [exportFormat, setExportFormat] = useState<'csv' | 'pdf'>('pdf')
   const [priceHistory, setPriceHistory] = useState<ProductPriceHistory[]>([])
@@ -143,7 +147,8 @@ export default function Reports() {
   const latestCountByProduct = useMemo(() => {
     const map = new Map<string, InventoryCount>()
     for (const count of counts) {
-      if (!map.has(count.product_id)) {
+      const existing = map.get(count.product_id)
+      if (!existing || new Date(count.created) > new Date(existing.created)) {
         map.set(count.product_id, count)
       }
     }
@@ -216,9 +221,12 @@ export default function Reports() {
         name: p.name,
         unit: p.unit,
         image: p.image,
+        categoryId: p.category_id,
         category: p.expand?.category_id?.name || 'Desconhecido',
         total: 0,
+        hasMatchingLevel: false,
         breakdown: [],
+        latestCount: latestCountByProduct.get(p.id) || null,
       })
     })
 
@@ -228,24 +236,54 @@ export default function Reports() {
       const subarea = l.expand?.subarea_id
       const area = subarea?.expand?.area_id
 
-      if (areaId !== '_all_' && area?.id !== areaId) return
-      if (subareaId !== '_all_' && subarea?.id !== subareaId) return
+      const areaMatch = areaId === '_all_' || area?.id === areaId
+      const subareaMatch = subareaId === '_all_' || subarea?.id === subareaId
 
-      const item = map.get(pid)!
-      item.total += l.quantity
-      item.breakdown.push({
-        subarea: subarea?.name || 'Desconhecida',
-        area: area?.name || 'Desconhecida',
-        quantity: l.quantity,
-      })
+      if (areaMatch && subareaMatch) {
+        const item = map.get(pid)!
+        item.total += l.quantity
+        item.hasMatchingLevel = true
+        item.breakdown.push({
+          subarea: subarea?.name || 'Desconhecida',
+          area: area?.name || 'Desconhecida',
+          quantity: l.quantity,
+        })
+      }
     })
 
     let arr = Array.from(map.values())
-    if (areaId !== '_all_') arr = arr.filter((i) => i.total > 0)
+
+    if (areaId !== '_all_' || subareaId !== '_all_') {
+      arr = arr.filter((i) => i.hasMatchingLevel)
+    }
+
     if (searchQuery)
       arr = arr.filter((i) => i.name.toLowerCase().includes(searchQuery.toLowerCase()))
-    return arr.sort((a, b) => a.name.localeCompare(b.name))
-  }, [levels, products, searchQuery, categoryId, areaId, subareaId])
+
+    arr.sort((a, b) => {
+      let cmp = 0
+      if (sortField === 'name') {
+        cmp = a.name.localeCompare(b.name)
+      } else if (sortField === 'category') {
+        cmp = a.category.localeCompare(b.category)
+      } else {
+        cmp = a.total - b.total
+      }
+      return sortDirection === 'asc' ? cmp : -cmp
+    })
+
+    return arr
+  }, [
+    levels,
+    products,
+    searchQuery,
+    categoryId,
+    areaId,
+    subareaId,
+    sortField,
+    sortDirection,
+    latestCountByProduct,
+  ])
 
   // --- SHOPPING LIST TAB DATA ---
   const shoppingList = useMemo(() => {
@@ -521,6 +559,8 @@ export default function Reports() {
     setAreaId('_all_')
     setSubareaId('_all_')
     setSearchQuery('')
+    setSortField('name')
+    setSortDirection('asc')
   }
 
   if (loading) {
@@ -877,6 +917,38 @@ export default function Reports() {
 
         {/* SUMMARY TAB */}
         <TabsContent value="summary" className="space-y-6">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-sm font-medium text-zinc-600">Ordenar por:</span>
+              <Select
+                value={sortField}
+                onValueChange={(v: 'name' | 'category' | 'quantity') => setSortField(v)}
+              >
+                <SelectTrigger className="w-[160px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="name">Nome</SelectItem>
+                  <SelectItem value="category">Categoria</SelectItem>
+                  <SelectItem value="quantity">Quantidade</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
+                className="gap-1.5"
+              >
+                {sortDirection === 'asc' ? (
+                  <ArrowUp className="w-4 h-4" />
+                ) : (
+                  <ArrowDown className="w-4 h-4" />
+                )}
+                {sortDirection === 'asc' ? 'Crescente' : 'Decrescente'}
+              </Button>
+            </div>
+            <span className="text-sm text-zinc-500">{summaryByProduct.length} produtos</span>
+          </div>
           <div className="bg-white rounded-lg border border-zinc-200 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <Table>
