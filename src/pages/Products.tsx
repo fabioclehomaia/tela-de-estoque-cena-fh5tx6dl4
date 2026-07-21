@@ -3,7 +3,17 @@ import { Link } from 'react-router-dom'
 import { useForm, useFieldArray } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Plus, Edit, Trash2, PackageSearch, MapPin, ImageIcon, Loader2 } from 'lucide-react'
+import {
+  Plus,
+  Edit,
+  Trash2,
+  PackageSearch,
+  MapPin,
+  ImageIcon,
+  Loader2,
+  Search,
+  X,
+} from 'lucide-react'
 import {
   getProducts,
   createProduct,
@@ -106,6 +116,7 @@ export default function Products() {
   const [filterCategory, setFilterCategory] = useState<string>('all')
   const [filterArea, setFilterArea] = useState<string>('all')
   const [filterSubarea, setFilterSubarea] = useState<string>('all')
+  const [searchQuery, setSearchQuery] = useState<string>('')
 
   const { user } = useAuth()
   const canDelete = user?.role === 'admin'
@@ -290,6 +301,9 @@ export default function Products() {
     }
   }
 
+  const hasActiveFilter =
+    filterCategory !== 'all' || filterArea !== 'all' || filterSubarea !== 'all'
+
   const filteredProducts = products.filter((p) => {
     if (filterCategory !== 'all' && p.category_id !== filterCategory) return false
     const pLevels = levels.filter((l) => l.product_id === p.id)
@@ -304,6 +318,9 @@ export default function Products() {
     if (filterSubarea !== 'all') {
       const hasSubarea = pLevels.some((l) => l.subarea_id === filterSubarea)
       if (!hasSubarea) return false
+    }
+    if (searchQuery.trim()) {
+      return p.name.toLowerCase().includes(searchQuery.trim().toLowerCase())
     }
     return true
   })
@@ -730,6 +747,28 @@ export default function Products() {
         </div>
       </div>
 
+      {hasActiveFilter && (
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
+          <Input
+            type="text"
+            placeholder="Buscar produto por nome..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10 pr-10 h-11 bg-white border-zinc-200 shadow-sm"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-700 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="grid gap-3">
         {filteredProducts.map((p) => (
           <div
@@ -833,7 +872,22 @@ export default function Products() {
         {filteredProducts.length === 0 && (
           <div className="text-center py-16 flex flex-col items-center text-zinc-500 bg-white rounded-xl border border-dashed border-zinc-200">
             <PackageSearch className="w-12 h-12 mb-3 text-zinc-300" />
-            <p>Nenhum produto encontrado com os filtros atuais.</p>
+            <p className="font-medium text-zinc-700 mb-1">Nenhum produto encontrado</p>
+            <p className="text-sm text-zinc-400">
+              {searchQuery
+                ? `Nenhum resultado para "${searchQuery}". Tente outro termo.`
+                : 'Nenhum produto encontrado com os filtros atuais.'}
+            </p>
+            {searchQuery && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-4"
+                onClick={() => setSearchQuery('')}
+              >
+                Limpar busca
+              </Button>
+            )}
           </div>
         )}
       </div>
