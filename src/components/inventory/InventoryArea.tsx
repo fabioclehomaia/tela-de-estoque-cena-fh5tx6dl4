@@ -123,7 +123,6 @@ export function InventoryArea({
         area={areaName}
         items={items}
         onConfirm={() => {
-          setModalOpen(false)
           onComplete()
         }}
       />

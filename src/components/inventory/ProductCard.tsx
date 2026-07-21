@@ -34,7 +34,8 @@ export function ProductCard({ item, onUpdate, disabled }: ProductCardProps) {
     }
   }
 
-  const isLowStock = item.minStock !== null && item.expectedQty < item.minStock
+  const isLowStock =
+    item.minStock !== null && item.actualQty !== null && item.actualQty < item.minStock
 
   return (
     <div

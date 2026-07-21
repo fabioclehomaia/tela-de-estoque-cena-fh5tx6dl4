@@ -45,3 +45,17 @@ export const getInventoryCounts = async (filter: string = '') => {
 export const createInventoryCount = async (data: Partial<InventoryCount>) => {
   return pb.collection('inventory_counts').create<InventoryCount>(data)
 }
+
+export interface SubmitCountItem {
+  product_id: string
+  subarea_id: string
+  counted_quantity: number
+}
+
+export const submitInventoryCounts = async (counts: SubmitCountItem[]) => {
+  return pb.send('/backend/v1/inventory-counts/submit', {
+    method: 'POST',
+    body: JSON.stringify({ counts }),
+    headers: { 'Content-Type': 'application/json' },
+  })
+}

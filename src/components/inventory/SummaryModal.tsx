@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { CountableItem } from '@/types/inventory'
 import {
   Dialog,
@@ -8,7 +9,10 @@ import {
 } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
-import { AlertTriangle, CheckCircle2 } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
+import { submitInventoryCounts } from '@/services/inventory_counts'
+import { getErrorMessage } from '@/lib/pocketbase/errors'
 
 interface SummaryModalProps {
   open: boolean
@@ -19,11 +23,40 @@ interface SummaryModalProps {
 }
 
 export function SummaryModal({ open, onOpenChange, area, items, onConfirm }: SummaryModalProps) {
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
   const uncounted = items.filter((p) => p.actualQty === null)
   const counted = items.filter((p) => p.actualQty !== null)
 
+  const handleConfirm = async () => {
+    setSaving(true)
+    setSaveError(null)
+    try {
+      await submitInventoryCounts(
+        counted.map((item) => ({
+          product_id: item.productId,
+          subarea_id: item.subareaId,
+          counted_quantity: item.actualQty as number,
+        })),
+      )
+      toast.success('Contagem salva com sucesso!')
+      onOpenChange(false)
+      onConfirm()
+    } catch (err) {
+      setSaveError(getErrorMessage(err))
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!saving) onOpenChange(v)
+      }}
+    >
       <DialogContent className="w-[92vw] max-w-md rounded-2xl p-0 overflow-hidden">
         <div className="p-6 pb-4">
           <DialogHeader>
@@ -84,15 +117,34 @@ export function SummaryModal({ open, onOpenChange, area, items, onConfirm }: Sum
           )}
         </ScrollArea>
 
+        {saveError && (
+          <div className="px-6 py-3 bg-red-50 border-t border-red-100 text-sm text-red-700">
+            {saveError}
+          </div>
+        )}
+
         <div className="p-4 border-t border-zinc-100 bg-zinc-50 flex gap-3">
-          <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>
+          <Button
+            variant="outline"
+            className="flex-1"
+            onClick={() => onOpenChange(false)}
+            disabled={saving}
+          >
             Revisar
           </Button>
           <Button
             className="flex-1 bg-emerald-800 hover:bg-emerald-900 text-white shadow-sm"
-            onClick={onConfirm}
+            onClick={handleConfirm}
+            disabled={saving || counted.length === 0}
           >
-            Confirmar
+            {saving ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Salvando...
+              </>
+            ) : (
+              'Confirmar'
+            )}
           </Button>
         </div>
       </DialogContent>
