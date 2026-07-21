@@ -123,6 +123,7 @@ export default function Index() {
       setSelectedAreaId('')
       setSelectedSubareaId('')
       setCounts({})
+      toast.success('Contagem finalizada com sucesso!')
     } catch (err) {
       console.error(err)
       toast.error('Erro ao recarregar dados.')

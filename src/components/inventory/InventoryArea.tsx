@@ -1,17 +1,12 @@
-import { useState, useMemo } from 'react'
+import { useState } from 'react'
 import { CountableItem } from '@/types/inventory'
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from '@/components/ui/accordion'
-import { Progress } from '@/components/ui/progress'
-import { Button } from '@/components/ui/button'
-import { CheckCircle2, PackageSearch } from 'lucide-react'
 import { ProductCard } from './ProductCard'
 import { SummaryModal } from './SummaryModal'
-import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
+import { Progress } from '@/components/ui/progress'
+import { submitInventoryCounts, SubmitCountItem } from '@/services/inventory_counts'
+import { ClipboardCheck } from 'lucide-react'
+import { toast } from 'sonner'
 
 interface InventoryAreaProps {
   areaName: string
@@ -28,103 +23,73 @@ export function InventoryArea({
   onUpdate,
   onComplete,
 }: InventoryAreaProps) {
-  const [modalOpen, setModalOpen] = useState(false)
+  const [showSummary, setShowSummary] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
 
-  const subAreas = useMemo(() => {
-    return Array.from(new Set(items.map((i) => i.subareaName))).sort()
-  }, [items])
-
-  const completedCount = items.filter((p) => p.actualQty !== null).length
+  const countedItems = items.filter((item) => item.actualQty !== null)
   const totalCount = items.length
-  const progress = totalCount === 0 ? 0 : Math.round((completedCount / totalCount) * 100)
+  const countedCount = countedItems.length
+  const allCounted = countedCount === totalCount
+  const progress = totalCount > 0 ? (countedCount / totalCount) * 100 : 0
 
-  if (items.length === 0) {
-    return (
-      <div className="text-center py-12 flex flex-col items-center bg-white rounded-xl border border-zinc-100 shadow-sm">
-        <PackageSearch className="w-10 h-10 mb-3 text-zinc-300" />
-        <p className="text-zinc-500 font-medium">Nenhum produto vinculado a esta área.</p>
-        <p className="text-sm text-zinc-400">
-          Vá em Produtos &gt; Vincular a Subáreas para adicionar.
-        </p>
-      </div>
-    )
+  const handleSubmit = async () => {
+    setSubmitting(true)
+    try {
+      const counts: SubmitCountItem[] = countedItems.map((item) => ({
+        product_id: item.productId,
+        subarea_id: item.subareaId,
+        counted_quantity: item.actualQty as number,
+      }))
+
+      await submitInventoryCounts(counts)
+      toast.success('Contagem salva com sucesso!')
+      setShowSummary(false)
+      onComplete()
+    } catch (err: any) {
+      const message =
+        err?.response?.message || err?.message || 'Erro ao salvar contagens. Tente novamente.'
+      toast.error(message)
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
-    <div className="pb-28 animate-fade-in-up">
-      <div className="flex items-center justify-between mb-3 px-1">
-        <div className="text-sm font-semibold text-zinc-600">Progresso da Área</div>
-        <div className="text-sm font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded">
-          {completedCount} / {totalCount}
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-4 bg-white p-4 rounded-xl border border-zinc-100 shadow-sm">
+        <div className="flex flex-col gap-1.5 flex-1">
+          <span className="text-sm font-medium text-zinc-700">
+            {countedCount} de {totalCount} produtos contados
+          </span>
+          <Progress value={progress} className="h-2" />
         </div>
-      </div>
-      <Progress value={progress} className="h-2.5 mb-6 bg-zinc-200" />
-
-      <div
-        className={cn(
-          'space-y-6 transition-all duration-500',
-          isCompleted && 'opacity-60 pointer-events-none grayscale-[0.3]',
-        )}
-      >
-        <Accordion type="multiple" defaultValue={subAreas} className="space-y-4">
-          {subAreas.map((sub) => {
-            const subItems = items.filter((p) => p.subareaName === sub)
-            return (
-              <AccordionItem key={sub} value={sub} className="border-0 bg-transparent">
-                <AccordionTrigger className="px-1 py-2 hover:no-underline [&[data-state=open]>svg]:text-emerald-700">
-                  <h3 className="text-lg font-bold text-zinc-900 tracking-tight sticky top-16 z-10 bg-zinc-50 py-1 flex items-center">
-                    {sub}{' '}
-                    <span className="text-sm font-normal text-zinc-500 ml-2">
-                      ({subItems.length})
-                    </span>
-                  </h3>
-                </AccordionTrigger>
-                <AccordionContent className="pt-3 pb-0">
-                  {subItems.map((item) => (
-                    <ProductCard
-                      key={item.id}
-                      item={item}
-                      onUpdate={onUpdate}
-                      disabled={isCompleted}
-                    />
-                  ))}
-                </AccordionContent>
-              </AccordionItem>
-            )
-          })}
-        </Accordion>
+        <Button
+          className="bg-emerald-600 hover:bg-emerald-700 shrink-0"
+          disabled={!allCounted || submitting || isCompleted}
+          onClick={() => setShowSummary(true)}
+        >
+          <ClipboardCheck className="w-4 h-4 mr-2" />
+          Finalizar
+        </Button>
       </div>
 
-      {!isCompleted && (
-        <div className="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-zinc-50 via-zinc-50 to-transparent z-40">
-          <div className="max-w-3xl mx-auto">
-            <Button
-              size="lg"
-              className="w-full h-14 text-base font-semibold shadow-elevation bg-emerald-800 hover:bg-emerald-900 text-white transition-all active:scale-[0.98]"
-              onClick={() => setModalOpen(true)}
-            >
-              <CheckCircle2 className="w-5 h-5 mr-2" />
-              Concluir {areaName}
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {isCompleted && (
-        <div className="mt-8 text-center p-4 bg-emerald-50 border border-emerald-100 rounded-xl text-emerald-800 flex items-center justify-center gap-2 font-medium">
-          <CheckCircle2 className="w-5 h-5" />
-          Área finalizada com sucesso.
-        </div>
-      )}
+      <div>
+        {items.map((item) => (
+          <ProductCard
+            key={item.id}
+            item={item}
+            onUpdate={onUpdate}
+            disabled={isCompleted || submitting}
+          />
+        ))}
+      </div>
 
       <SummaryModal
-        open={modalOpen}
-        onOpenChange={setModalOpen}
-        area={areaName}
-        items={items}
-        onConfirm={() => {
-          onComplete()
-        }}
+        open={showSummary}
+        onOpenChange={setShowSummary}
+        items={countedItems}
+        onConfirm={handleSubmit}
+        submitting={submitting}
       />
     </div>
   )

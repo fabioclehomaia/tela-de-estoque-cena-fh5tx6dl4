@@ -47,7 +47,12 @@ routerAdd(
               'inventory_levels',
               "product_id = '" + c.product_id + "' && subarea_id = '" + c.subarea_id + "'",
             )
-            previousQty = levelRecord.get('quantity') || 0
+            var levelQty = levelRecord.get('quantity')
+            if (levelQty === null || levelQty === undefined) {
+              previousQty = 0
+            } else {
+              previousQty = levelQty
+            }
           } catch (_) {}
 
           var countsCol = txApp.findCollectionByNameOrId('inventory_counts')
@@ -57,18 +62,18 @@ routerAdd(
           countRecord.set('previous_quantity', previousQty)
           countRecord.set('counted_quantity', qty)
           countRecord.set('subarea_id', c.subarea_id)
-          txApp.save(countRecord)
+          txApp.saveNoValidate(countRecord)
 
           if (levelRecord) {
             levelRecord.set('quantity', qty)
-            txApp.save(levelRecord)
+            txApp.saveNoValidate(levelRecord)
           } else {
             var levelsCol = txApp.findCollectionByNameOrId('inventory_levels')
             var newLevel = new Record(levelsCol)
             newLevel.set('product_id', c.product_id)
             newLevel.set('subarea_id', c.subarea_id)
             newLevel.set('quantity', qty)
-            txApp.save(newLevel)
+            txApp.saveNoValidate(newLevel)
           }
         }
       })
