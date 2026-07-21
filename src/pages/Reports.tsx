@@ -93,7 +93,7 @@ export default function Reports() {
   const [sortField, setSortField] = useState<'name' | 'category' | 'quantity'>('name')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
   const [exportModalOpen, setExportModalOpen] = useState(false)
-  const [exportFormat, setExportFormat] = useState<'csv' | 'pdf'>('pdf')
+  const [exportFormat, setExportFormat] = useState<'csv' | 'pdf' | 'doc'>('pdf')
   const [priceHistory, setPriceHistory] = useState<ProductPriceHistory[]>([])
   const [selectedPriceProducts, setSelectedPriceProducts] = useState<string[]>([])
 
@@ -547,6 +547,96 @@ export default function Reports() {
       `
       printWindow.document.write(html)
       printWindow.document.close()
+    } else if (exportFormat === 'doc') {
+      const docHeaders = ['Produto', 'Categoria', 'Unidade', 'Quantidade Atual']
+      const docData =
+        activeTab === 'summary'
+          ? summaryByProduct.map((row) => [row.name, row.category, row.unit, row.total])
+          : activeTab === 'shopping'
+            ? shoppingList.map((row) => [
+                row.product.name,
+                getCategoryName(row.product.category_id),
+                row.product.unit,
+                row.total,
+              ])
+            : activeTab === 'trends'
+              ? consumptionData.list.map((row) => [
+                  row.product.name,
+                  getCategoryName(row.product.category_id),
+                  row.product.unit,
+                  row.consumed,
+                ])
+              : activeTab === 'history'
+                ? filteredCounts.map((count) => [
+                    count.expand?.product_id?.name || 'Desconhecido',
+                    getCategoryName(count.expand?.product_id?.category_id || ''),
+                    count.expand?.product_id?.unit || '',
+                    count.counted_quantity,
+                  ])
+                : summaryByProduct.map((row) => [row.name, row.category, row.unit, row.total])
+
+      const docTitle = 'Relatório de Estoque Atual'
+      const exportDate = format(new Date(), "dd/MM/yyyy 'às' HH:mm")
+
+      const docHtml = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+        <head>
+          <meta charset="utf-8">
+          <title>${docTitle}</title>
+          <!--[if gte mso 9]>
+          <xml>
+            <w:WordDocument>
+              <w:View>Print</w:View>
+              <w:Zoom>100</w:Zoom>
+              <w:DoNotPromptForConvert/>
+              <w:DoNotShowInsertionsAndDeletions/>
+            </w:WordDocument>
+          </xml>
+          <![endif]-->
+          <style>
+            @page { size: A4 landscape; margin: 2cm; }
+            body { font-family: 'Calibri', sans-serif; font-size: 11pt; color: #000; }
+            .doc-header { text-align: center; margin-bottom: 24px; border-bottom: 2px solid #065f46; padding-bottom: 12px; }
+            .doc-header h1 { font-size: 20pt; color: #065f46; margin: 0 0 4px 0; }
+            .doc-header p { font-size: 10pt; color: #555; margin: 2px 0; }
+            table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 10pt; }
+            th { border: 1px solid #333; padding: 8px 10px; text-align: left; background-color: #065f46; color: #fff; font-weight: bold; }
+            td { border: 1px solid #999; padding: 6px 10px; text-align: left; }
+            tr:nth-child(even) td { background-color: #f4f4f5; }
+            .doc-footer { margin-top: 20px; font-size: 9pt; color: #888; text-align: center; }
+          </style>
+        </head>
+        <body>
+          <div class="doc-header">
+            <h1>${docTitle}</h1>
+            <p><strong>Data de Exportação:</strong> ${exportDate}</p>
+          </div>
+          <table>
+            <thead>
+              <tr>${docHeaders.map((h) => `<th>${h}</th>`).join('')}</tr>
+            </thead>
+            <tbody>
+              ${docData.map((row) => `<tr>${row.map((cell: any) => `<td>${cell}</td>`).join('')}</tr>`).join('')}
+            </tbody>
+          </table>
+          <div class="doc-footer">
+            <p>Cena Risotteria — Sistema de Gestão de Estoque</p>
+            <p>Total de registros: ${docData.length}</p>
+          </div>
+        </body>
+      </html>`
+
+      const blob = new Blob(['\ufeff', docHtml], { type: 'application/msword' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute(
+        'download',
+        `relatorio_estoque_atual_${format(new Date(), 'yyyy-MM-dd')}.doc`,
+      )
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
     }
     setExportModalOpen(false)
   }
@@ -1364,6 +1454,7 @@ export default function Reports() {
                 <SelectContent>
                   <SelectItem value="pdf">PDF (Impressão)</SelectItem>
                   <SelectItem value="csv">Excel / CSV</SelectItem>
+                  <SelectItem value="doc">Word (.doc)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
