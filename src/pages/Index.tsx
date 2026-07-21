@@ -2,12 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { useAuth } from '@/hooks/use-auth'
 import { getAreas, getSubareas, Area, Subarea } from '@/services/inventory'
 import { getProducts, Product } from '@/services/products'
-import {
-  getInventoryLevels,
-  InventoryLevel,
-  updateInventoryLevel,
-} from '@/services/inventory_levels'
-import { createInventoryCount } from '@/services/inventory_counts'
+import { getInventoryLevels, InventoryLevel } from '@/services/inventory_levels'
 import { CountableItem } from '@/types/inventory'
 import { InventoryArea } from '@/components/inventory/InventoryArea'
 import { useRealtime } from '@/hooks/use-realtime'
@@ -122,36 +117,15 @@ export default function Index() {
   }
 
   const handleCompleteCount = async () => {
-    if (!user || !selectedSubareaId) return
-
     try {
-      const promises = items.map(async (item) => {
-        if (item.actualQty !== null && item.actualQty !== undefined) {
-          await updateInventoryLevel(item.id, {
-            quantity: item.actualQty,
-          })
-
-          await createInventoryCount({
-            product_id: item.productId,
-            subarea_id: item.subareaId,
-            user_id: user.id,
-            previous_quantity: item.expectedQty,
-            counted_quantity: item.actualQty,
-          })
-        }
-      })
-
-      await Promise.all(promises)
-
-      toast.success('Alterações salvas com sucesso')
-      loadData()
+      await loadData()
       setWorkflowState('idle')
       setSelectedAreaId('')
       setSelectedSubareaId('')
       setCounts({})
     } catch (err) {
       console.error(err)
-      toast.error('Erro ao salvar a contagem.')
+      toast.error('Erro ao recarregar dados.')
     }
   }
 

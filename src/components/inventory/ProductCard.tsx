@@ -2,17 +2,15 @@ import { useState, useEffect } from 'react'
 import { CountableItem } from '@/types/inventory'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, ImageIcon, MinusCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import pb from '@/lib/pocketbase/client'
 
 interface ProductCardProps {
   item: CountableItem
   onUpdate: (id: string, qty: number | null) => void
   disabled?: boolean
 }
-
-import pb from '@/lib/pocketbase/client'
-import { ImageIcon } from 'lucide-react'
 
 export function ProductCard({ item, onUpdate, disabled }: ProductCardProps) {
   const [localVal, setLocalVal] = useState(item.actualQty?.toString() ?? '')
@@ -61,14 +59,24 @@ export function ProductCard({ item, onUpdate, disabled }: ProductCardProps) {
         <div className="flex flex-col gap-1.5 justify-center">
           <span className="font-semibold text-zinc-900 leading-tight">{item.name}</span>
           <span className="text-xs text-zinc-500">Unidade: {item.unit}</span>
-          {isLowStock && (
+          {(isLowStock || item.actualQty === 0) && (
             <div className="flex flex-wrap gap-2 mt-1">
-              <Badge
-                variant="outline"
-                className="text-amber-700 border-amber-200 bg-amber-50 gap-1 px-1.5 font-medium text-[10px] py-0.5"
-              >
-                <AlertTriangle className="w-3 h-3" /> Estoque Baixo
-              </Badge>
+              {item.actualQty === 0 && (
+                <Badge
+                  variant="outline"
+                  className="text-red-700 border-red-200 bg-red-50 gap-1 px-1.5 font-medium text-[10px] py-0.5"
+                >
+                  <MinusCircle className="w-3 h-3" /> Zerado
+                </Badge>
+              )}
+              {isLowStock && (
+                <Badge
+                  variant="outline"
+                  className="text-amber-700 border-amber-200 bg-amber-50 gap-1 px-1.5 font-medium text-[10px] py-0.5"
+                >
+                  <AlertTriangle className="w-3 h-3" /> Estoque Baixo
+                </Badge>
+              )}
             </div>
           )}
         </div>
