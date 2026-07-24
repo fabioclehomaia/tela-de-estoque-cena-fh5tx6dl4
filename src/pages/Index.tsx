@@ -192,7 +192,7 @@ export default function Index() {
     orders: Array<{ product_id: string; subarea_id: string; sort_order: number }>,
   ) => {
     await saveCountOrders(orders)
-    toast.success('Ordem salva com sucesso!')
+    toast.success('Ordem atualizada!', { duration: 1500 })
     try {
       const co = await getCountOrders()
       setCountOrders(co)
