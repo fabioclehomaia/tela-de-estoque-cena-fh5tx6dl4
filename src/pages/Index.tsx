@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { getProducts, Product } from '@/services/products'
 import { getAreas, getSubareas, getCategories, Area, Subarea, Category } from '@/services/inventory'
 import { getInventoryLevels, InventoryLevel } from '@/services/inventory_levels'
+import { getCountOrders, CountOrder, saveCountOrders } from '@/services/count_order'
 import { CountableItem } from '@/types/inventory'
 import { InventoryArea } from '@/components/inventory/InventoryArea'
 import { Button } from '@/components/ui/button'
@@ -25,6 +26,7 @@ export default function Index() {
   const [categories, setCategories] = useState<Category[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [levels, setLevels] = useState<InventoryLevel[]>([])
+  const [countOrders, setCountOrders] = useState<CountOrder[]>([])
   const [loading, setLoading] = useState(true)
 
   const [selectedAreaId, setSelectedAreaId] = useState<string>('_all_')
@@ -36,18 +38,20 @@ export default function Index() {
 
   const loadData = async () => {
     try {
-      const [a, s, c, p, l] = await Promise.all([
+      const [a, s, c, p, l, co] = await Promise.all([
         getAreas(),
         getSubareas(),
         getCategories(),
         getProducts(),
         getInventoryLevels(),
+        getCountOrders(),
       ])
       setAreas(a)
       setSubareas(s)
       setCategories(c)
       setProducts(p)
       setLevels(l)
+      setCountOrders(co)
     } catch {
       toast.error('Erro ao carregar dados do estoque.')
     } finally {
@@ -60,6 +64,7 @@ export default function Index() {
   }, [])
   useRealtime('inventory_levels', loadData)
   useRealtime('inventory_counts', loadData)
+  useRealtime('count_order', loadData)
 
   const availableAreas = useMemo(() => {
     if (!user) return areas
@@ -112,6 +117,14 @@ export default function Index() {
     return items
   }, [levels, products, subareas, countState])
 
+  const orderMap = useMemo(() => {
+    const map = new Map<string, number>()
+    countOrders.forEach((co) => {
+      map.set(`${co.product_id}_${co.subarea_id}`, co.sort_order)
+    })
+    return map
+  }, [countOrders])
+
   const filteredItems = useMemo(() => {
     return allItems
       .filter((item) => {
@@ -127,8 +140,28 @@ export default function Index() {
           return false
         return true
       })
-      .sort((a, b) => a.name.localeCompare(b.name))
-  }, [allItems, selectedAreaId, selectedSubareaId, selectedCategoryId, searchQuery, subareas])
+      .sort((a, b) => {
+        const subareaA = subareas.find((s) => s.id === a.subareaId)
+        const subareaB = subareas.find((s) => s.id === b.subareaId)
+        const nameA = subareaA?.name || ''
+        const nameB = subareaB?.name || ''
+        if (nameA !== nameB) return nameA.localeCompare(nameB)
+        const orderA = orderMap.get(`${a.productId}_${a.subareaId}`)
+        const orderB = orderMap.get(`${b.productId}_${b.subareaId}`)
+        if (orderA !== undefined && orderB !== undefined) return orderA - orderB
+        if (orderA !== undefined) return -1
+        if (orderB !== undefined) return 1
+        return a.name.localeCompare(b.name)
+      })
+  }, [
+    allItems,
+    selectedAreaId,
+    selectedSubareaId,
+    selectedCategoryId,
+    searchQuery,
+    subareas,
+    orderMap,
+  ])
 
   const groupedItems = useMemo(() => {
     const groups = new Map<string, { areaName: string; items: CountableItem[] }>()
@@ -153,6 +186,19 @@ export default function Index() {
 
   const handleComplete = (areaId: string) => {
     setCompletedAreas((prev) => new Set(prev).add(areaId))
+  }
+
+  const handleSaveOrder = async (
+    orders: Array<{ product_id: string; subarea_id: string; sort_order: number }>,
+  ) => {
+    await saveCountOrders(orders)
+    toast.success('Ordem salva com sucesso!')
+    try {
+      const co = await getCountOrders()
+      setCountOrders(co)
+    } catch {
+      // Real-time will refresh eventually
+    }
   }
 
   const clearFilters = () => {
@@ -298,6 +344,9 @@ export default function Index() {
                 isCompleted={completedAreas.has(group.areaId)}
                 onUpdate={handleUpdate}
                 onComplete={() => handleComplete(group.areaId)}
+                userRole={user?.role}
+                subareas={subareas}
+                onSaveOrder={handleSaveOrder}
               />
             </div>
           ))}

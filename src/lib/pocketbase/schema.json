@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-21T09:52:59.756Z",
+  "generatedAt": "2026-07-24T01:54:41.088Z",
   "collections": [
     {
       "name": "users",
@@ -429,6 +429,56 @@
         }
       ],
       "indexes": []
+    },
+    {
+      "name": "count_order",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != ''",
+        "view": "@request.auth.id != ''",
+        "create": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'manager')",
+        "update": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'manager')",
+        "delete": "@request.auth.id != '' && (@request.auth.role = 'admin' || @request.auth.role = 'manager')"
+      },
+      "fields": [
+        {
+          "name": "product_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "products"
+        },
+        {
+          "name": "subarea_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "subareas"
+        },
+        {
+          "name": "sort_order",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_count_order_prod_sub ON count_order (product_id, subarea_id)"
+      ]
     }
   ]
 }

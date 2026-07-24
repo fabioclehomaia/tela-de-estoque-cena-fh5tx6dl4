@@ -2,10 +2,12 @@ import { useState } from 'react'
 import { CountableItem } from '@/types/inventory'
 import { ProductCard } from './ProductCard'
 import { SummaryModal } from './SummaryModal'
+import { ReorderModal } from './ReorderModal'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { submitInventoryCounts, SubmitCountItem } from '@/services/inventory_counts'
-import { ClipboardCheck } from 'lucide-react'
+import { Subarea } from '@/services/inventory'
+import { ClipboardCheck, ArrowUpDown } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface InventoryAreaProps {
@@ -14,6 +16,11 @@ interface InventoryAreaProps {
   isCompleted: boolean
   onUpdate: (id: string, qty: number | null) => void
   onComplete: () => void
+  userRole?: string
+  subareas: Subarea[]
+  onSaveOrder: (
+    orders: Array<{ product_id: string; subarea_id: string; sort_order: number }>,
+  ) => Promise<void>
 }
 
 export function InventoryArea({
@@ -22,9 +29,14 @@ export function InventoryArea({
   isCompleted,
   onUpdate,
   onComplete,
+  userRole,
+  subareas,
+  onSaveOrder,
 }: InventoryAreaProps) {
   const [showSummary, setShowSummary] = useState(false)
+  const [showReorder, setShowReorder] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const canReorder = userRole === 'admin' || userRole === 'manager'
 
   const countedItems = items.filter((item) => item.actualQty !== null)
   const totalCount = items.length
@@ -63,14 +75,27 @@ export function InventoryArea({
           </span>
           <Progress value={progress} className="h-2" />
         </div>
-        <Button
-          className="bg-emerald-600 hover:bg-emerald-700 shrink-0"
-          disabled={!allCounted || submitting || isCompleted}
-          onClick={() => setShowSummary(true)}
-        >
-          <ClipboardCheck className="w-4 h-4 mr-2" />
-          Finalizar
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          {canReorder && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isCompleted || items.length === 0}
+              onClick={() => setShowReorder(true)}
+            >
+              <ArrowUpDown className="w-4 h-4 mr-2" />
+              Reordenar
+            </Button>
+          )}
+          <Button
+            className="bg-emerald-600 hover:bg-emerald-700"
+            disabled={!allCounted || submitting || isCompleted}
+            onClick={() => setShowSummary(true)}
+          >
+            <ClipboardCheck className="w-4 h-4 mr-2" />
+            Finalizar
+          </Button>
+        </div>
       </div>
 
       <div>
@@ -90,6 +115,14 @@ export function InventoryArea({
         items={countedItems}
         onConfirm={handleSubmit}
         submitting={submitting}
+      />
+
+      <ReorderModal
+        open={showReorder}
+        onOpenChange={setShowReorder}
+        items={items}
+        subareas={subareas}
+        onSave={onSaveOrder}
       />
     </div>
   )
