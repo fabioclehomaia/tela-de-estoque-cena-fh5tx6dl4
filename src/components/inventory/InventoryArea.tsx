@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef } from 'react'
 import { CountableItem } from '@/types/inventory'
 import { SummaryModal } from './SummaryModal'
 import { ReorderableProductRow } from './ReorderableProductRow'
@@ -6,8 +6,9 @@ import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { submitInventoryCounts, SubmitCountItem } from '@/services/inventory_counts'
 import { Subarea } from '@/services/inventory'
-import { ClipboardCheck, ArrowUpDown, Check } from 'lucide-react'
+import { ClipboardCheck } from 'lucide-react'
 import { toast } from 'sonner'
+import { useRealtime } from '@/hooks/use-realtime'
 
 interface InventoryAreaProps {
   areaName: string
@@ -20,6 +21,7 @@ interface InventoryAreaProps {
   onSaveOrder: (
     orders: Array<{ product_id: string; subarea_id: string; sort_order: number }>,
   ) => Promise<void>
+  onRefreshOrder?: () => void
 }
 
 export function InventoryArea({
@@ -30,39 +32,89 @@ export function InventoryArea({
   onComplete,
   userRole,
   onSaveOrder,
+  onRefreshOrder,
 }: InventoryAreaProps) {
   const [showSummary, setShowSummary] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [isReorderMode, setIsReorderMode] = useState(false)
   const [localItems, setLocalItems] = useState<CountableItem[]>(items)
   const [highlightIndex, setHighlightIndex] = useState<number | null>(null)
   const canReorder = userRole === 'admin' || userRole === 'manager'
 
-  useEffect(() => {
-    if (!isReorderMode) {
-      setLocalItems(items)
-    }
-  }, [items, isReorderMode])
+  const containerRef = useRef<HTMLDivElement>(null)
+  const positionsRef = useRef<Map<string, number>>(new Map())
+  const shouldAnimateRef = useRef(false)
 
-  const displayItems = isReorderMode ? localItems : items
-  const countedItems = displayItems.filter((item) => item.actualQty !== null)
-  const totalCount = displayItems.length
+  useEffect(() => {
+    setLocalItems(items)
+  }, [items])
+
+  useRealtime('count_order', () => {
+    onRefreshOrder?.()
+  })
+
+  useLayoutEffect(() => {
+    if (!shouldAnimateRef.current) return
+    shouldAnimateRef.current = false
+
+    const container = containerRef.current
+    if (!container) return
+
+    const elements = container.querySelectorAll('[data-item-key]')
+    elements.forEach((el) => {
+      const htmlEl = el as HTMLElement
+      const key = htmlEl.dataset.itemKey
+      if (!key) return
+
+      const prevTop = positionsRef.current.get(key)
+      if (prevTop === undefined) return
+
+      const newTop = htmlEl.getBoundingClientRect().top
+      const deltaY = prevTop - newTop
+
+      if (deltaY !== 0) {
+        htmlEl.style.transform = `translateY(${deltaY}px)`
+        htmlEl.style.transition = 'none'
+
+        requestAnimationFrame(() => {
+          htmlEl.style.transform = ''
+          htmlEl.style.transition = 'transform 300ms cubic-bezier(0.4, 0, 0.2, 1)'
+
+          const cleanup = () => {
+            htmlEl.style.transition = ''
+            htmlEl.removeEventListener('transitionend', cleanup)
+          }
+          htmlEl.addEventListener('transitionend', cleanup)
+        })
+      }
+    })
+
+    positionsRef.current.clear()
+  }, [localItems])
+
+  const countedItems = localItems.filter((item) => item.actualQty !== null)
+  const totalCount = localItems.length
   const countedCount = countedItems.length
   const allCounted = countedCount === totalCount
   const progress = totalCount > 0 ? (countedCount / totalCount) * 100 : 0
 
-  const enterReorderMode = () => {
-    setLocalItems([...items])
-    setIsReorderMode(true)
-  }
-
-  const exitReorderMode = () => {
-    setIsReorderMode(false)
-    setHighlightIndex(null)
+  const recordPositions = () => {
+    const container = containerRef.current
+    if (!container) return
+    const elements = container.querySelectorAll('[data-item-key]')
+    elements.forEach((el) => {
+      const htmlEl = el as HTMLElement
+      const key = htmlEl.dataset.itemKey
+      if (key) {
+        positionsRef.current.set(key, htmlEl.getBoundingClientRect().top)
+      }
+    })
   }
 
   const swapAndSave = (fromIndex: number, toIndex: number) => {
     if (toIndex < 0 || toIndex >= localItems.length) return
+    if (localItems[fromIndex].subareaId !== localItems[toIndex].subareaId) return
+
+    recordPositions()
 
     const newItems = [...localItems]
     ;[newItems[fromIndex], newItems[toIndex]] = [newItems[toIndex], newItems[fromIndex]]
@@ -79,11 +131,14 @@ export function InventoryArea({
       }
     })
 
+    shouldAnimateRef.current = true
     setHighlightIndex(toIndex)
     setTimeout(() => setHighlightIndex(null), 600)
 
     onSaveOrder(orders).catch(() => {
-      toast.error('Erro ao salvar ordem.')
+      toast.error('Erro ao salvar ordem. Revertendo para a posição original.')
+      shouldAnimateRef.current = false
+      setLocalItems(items)
     })
   }
 
@@ -126,55 +181,39 @@ export function InventoryArea({
           <Progress value={progress} className="h-2" />
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {canReorder && !isReorderMode && (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={isCompleted || items.length === 0}
-              onClick={enterReorderMode}
-            >
-              <ArrowUpDown className="w-4 h-4 mr-2" />
-              Reordenar
-            </Button>
-          )}
-          {canReorder && isReorderMode && (
-            <Button
-              size="sm"
-              onClick={exitReorderMode}
-              className="bg-emerald-600 hover:bg-emerald-700"
-            >
-              <Check className="w-4 h-4 mr-1" />
-              Concluir
-            </Button>
-          )}
-          {!isReorderMode && (
-            <Button
-              className="bg-emerald-600 hover:bg-emerald-700"
-              disabled={!allCounted || submitting || isCompleted}
-              onClick={() => setShowSummary(true)}
-            >
-              <ClipboardCheck className="w-4 h-4 mr-2" />
-              Finalizar
-            </Button>
-          )}
+          <Button
+            className="bg-emerald-600 hover:bg-emerald-700"
+            disabled={!allCounted || submitting || isCompleted}
+            onClick={() => setShowSummary(true)}
+          >
+            <ClipboardCheck className="w-4 h-4 mr-2" />
+            Finalizar
+          </Button>
         </div>
       </div>
 
-      <div>
-        {displayItems.map((item, index) => (
-          <ReorderableProductRow
-            key={item.id}
-            item={item}
-            index={index}
-            total={displayItems.length}
-            isReorderMode={isReorderMode}
-            isHighlighted={highlightIndex === index}
-            onUpdate={onUpdate}
-            disabled={isCompleted || submitting}
-            onMoveUp={handleMoveUp}
-            onMoveDown={handleMoveDown}
-          />
-        ))}
+      <div ref={containerRef}>
+        {localItems.map((item, index) => {
+          const prevItem = localItems[index - 1]
+          const nextItem = localItems[index + 1]
+          const isFirstInSubarea = !prevItem || prevItem.subareaId !== item.subareaId
+          const isLastInSubarea = !nextItem || nextItem.subareaId !== item.subareaId
+
+          return (
+            <ReorderableProductRow
+              key={item.id}
+              item={item}
+              canReorder={canReorder}
+              isFirst={isFirstInSubarea}
+              isLast={isLastInSubarea}
+              isHighlighted={highlightIndex === index}
+              onUpdate={onUpdate}
+              disabled={isCompleted || submitting}
+              onMoveUp={() => handleMoveUp(index)}
+              onMoveDown={() => handleMoveDown(index)}
+            />
+          )
+        })}
       </div>
 
       <SummaryModal

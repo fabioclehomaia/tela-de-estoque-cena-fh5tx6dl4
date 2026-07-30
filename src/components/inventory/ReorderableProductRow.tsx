@@ -5,61 +5,69 @@ import { ChevronUp, ChevronDown } from 'lucide-react'
 
 interface ReorderableProductRowProps {
   item: CountableItem
-  index: number
-  total: number
-  isReorderMode: boolean
+  canReorder: boolean
+  isFirst: boolean
+  isLast: boolean
   isHighlighted: boolean
   onUpdate: (id: string, qty: number | null) => void
   disabled?: boolean
-  onMoveUp: (index: number) => void
-  onMoveDown: (index: number) => void
+  onMoveUp: () => void
+  onMoveDown: () => void
 }
 
 export function ReorderableProductRow({
   item,
-  index,
-  total,
-  isReorderMode,
+  canReorder,
+  isFirst,
+  isLast,
   isHighlighted,
   onUpdate,
   disabled,
   onMoveUp,
   onMoveDown,
 }: ReorderableProductRowProps) {
-  const isFirst = index === 0
-  const isLast = index === total - 1
-
   return (
     <div
+      data-item-key={item.id}
       className={cn(
-        'flex items-stretch gap-1 transition-all duration-300 rounded-xl',
-        isHighlighted && 'bg-emerald-50 ring-1 ring-emerald-200',
+        'relative rounded-xl transition-colors duration-200',
+        isHighlighted && 'bg-emerald-50 ring-2 ring-emerald-300 ring-offset-1',
       )}
     >
-      {isReorderMode && (
-        <div className="flex flex-col justify-center gap-0.5 shrink-0 pl-1 py-3">
-          <button
-            type="button"
-            disabled={isFirst}
-            onClick={() => onMoveUp(index)}
-            className="w-7 h-7 flex items-center justify-center rounded-md text-zinc-400 hover:text-emerald-700 hover:bg-emerald-50 disabled:opacity-20 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-zinc-400 transition-colors"
-            aria-label="Mover para cima"
-          >
-            <ChevronUp className="w-4 h-4" />
-          </button>
-          <button
-            type="button"
-            disabled={isLast}
-            onClick={() => onMoveDown(index)}
-            className="w-7 h-7 flex items-center justify-center rounded-md text-zinc-400 hover:text-emerald-700 hover:bg-emerald-50 disabled:opacity-20 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-zinc-400 transition-colors"
-            aria-label="Mover para baixo"
-          >
-            <ChevronDown className="w-4 h-4" />
-          </button>
+      <div className="flex items-stretch gap-0.5">
+        {canReorder && (
+          <div className="flex flex-col justify-center gap-0.5 pl-1">
+            <button
+              type="button"
+              disabled={isFirst || disabled}
+              onClick={onMoveUp}
+              className={cn(
+                'flex items-center justify-center h-8 w-8 rounded-md transition-colors',
+                isFirst || disabled
+                  ? 'text-zinc-300 cursor-not-allowed'
+                  : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 active:bg-zinc-200',
+              )}
+            >
+              <ChevronUp className="w-5 h-5" />
+            </button>
+            <button
+              type="button"
+              disabled={isLast || disabled}
+              onClick={onMoveDown}
+              className={cn(
+                'flex items-center justify-center h-8 w-8 rounded-md transition-colors',
+                isLast || disabled
+                  ? 'text-zinc-300 cursor-not-allowed'
+                  : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 active:bg-zinc-200',
+              )}
+            >
+              <ChevronDown className="w-5 h-5" />
+            </button>
+          </div>
+        )}
+        <div className="flex-1 min-w-0">
+          <ProductCard item={item} onUpdate={onUpdate} disabled={disabled} />
         </div>
-      )}
-      <div className="flex-1">
-        <ProductCard item={item} onUpdate={onUpdate} disabled={disabled || isReorderMode} />
       </div>
     </div>
   )
