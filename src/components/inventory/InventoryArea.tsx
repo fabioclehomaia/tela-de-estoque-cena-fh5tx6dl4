@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react'
 import { CountableItem } from '@/types/inventory'
 import { SummaryModal } from './SummaryModal'
-import { DraggableProductRow } from './DraggableProductRow'
+import { ReorderableProductRow } from './ReorderableProductRow'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { submitInventoryCounts, SubmitCountItem } from '@/services/inventory_counts'
 import { Subarea } from '@/services/inventory'
-import { ClipboardCheck, ArrowUpDown, Check, X } from 'lucide-react'
+import { ClipboardCheck, ArrowUpDown, Check } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface InventoryAreaProps {
@@ -35,9 +35,7 @@ export function InventoryArea({
   const [submitting, setSubmitting] = useState(false)
   const [isReorderMode, setIsReorderMode] = useState(false)
   const [localItems, setLocalItems] = useState<CountableItem[]>(items)
-  const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
-  const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null)
-  const [savingOrder, setSavingOrder] = useState(false)
+  const [highlightIndex, setHighlightIndex] = useState<number | null>(null)
   const canReorder = userRole === 'admin' || userRole === 'manager'
 
   useEffect(() => {
@@ -47,50 +45,28 @@ export function InventoryArea({
   }, [items, isReorderMode])
 
   const displayItems = isReorderMode ? localItems : items
-  const canDrag = displayItems.length > 1
   const countedItems = displayItems.filter((item) => item.actualQty !== null)
   const totalCount = displayItems.length
   const countedCount = countedItems.length
   const allCounted = countedCount === totalCount
   const progress = totalCount > 0 ? (countedCount / totalCount) * 100 : 0
 
-  const handleDragStart = (index: number) => {
-    setDraggedIndex(index)
+  const enterReorderMode = () => {
+    setLocalItems([...items])
+    setIsReorderMode(true)
   }
 
-  const handleDragOver = (e: React.DragEvent, index: number) => {
-    if (draggedIndex === null) return
-    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-    const midpoint = rect.top + rect.height / 2
-    const target = e.clientY < midpoint ? index : index + 1
-    if (target === draggedIndex || target === draggedIndex + 1) {
-      setDropTargetIndex(null)
-      return
-    }
-    setDropTargetIndex(target)
+  const exitReorderMode = () => {
+    setIsReorderMode(false)
+    setHighlightIndex(null)
   }
 
-  const handleDrop = async () => {
-    if (draggedIndex === null || dropTargetIndex === null) {
-      setDraggedIndex(null)
-      setDropTargetIndex(null)
-      return
-    }
-    const target = dropTargetIndex
-    if (target === draggedIndex || target === draggedIndex + 1) {
-      setDraggedIndex(null)
-      setDropTargetIndex(null)
-      return
-    }
+  const swapAndSave = (fromIndex: number, toIndex: number) => {
+    if (toIndex < 0 || toIndex >= localItems.length) return
 
     const newItems = [...localItems]
-    const [moved] = newItems.splice(draggedIndex, 1)
-    const adjustedTarget = target > draggedIndex ? target - 1 : target
-    newItems.splice(adjustedTarget, 0, moved)
-
+    ;[newItems[fromIndex], newItems[toIndex]] = [newItems[toIndex], newItems[fromIndex]]
     setLocalItems(newItems)
-    setDraggedIndex(null)
-    setDropTargetIndex(null)
 
     const subareaCounters = new Map<string, number>()
     const orders = newItems.map((item) => {
@@ -103,38 +79,20 @@ export function InventoryArea({
       }
     })
 
-    setSavingOrder(true)
-    try {
-      await onSaveOrder(orders)
-    } catch {
-      setLocalItems(items)
-      toast.error('Erro ao salvar ordem. Revertendo alterações.')
-    } finally {
-      setSavingOrder(false)
-    }
+    setHighlightIndex(toIndex)
+    setTimeout(() => setHighlightIndex(null), 600)
+
+    onSaveOrder(orders).catch(() => {
+      toast.error('Erro ao salvar ordem.')
+    })
   }
 
-  const handleDragEnd = () => {
-    setDraggedIndex(null)
-    setDropTargetIndex(null)
+  const handleMoveUp = (index: number) => {
+    swapAndSave(index, index - 1)
   }
 
-  const enterReorderMode = () => {
-    setLocalItems([...items])
-    setIsReorderMode(true)
-  }
-
-  const exitReorderMode = () => {
-    setLocalItems(items)
-    setIsReorderMode(false)
-    setDraggedIndex(null)
-    setDropTargetIndex(null)
-  }
-
-  const saveAndExitReorderMode = () => {
-    setIsReorderMode(false)
-    setDraggedIndex(null)
-    setDropTargetIndex(null)
+  const handleMoveDown = (index: number) => {
+    swapAndSave(index, index + 1)
   }
 
   const handleSubmit = async () => {
@@ -180,21 +138,14 @@ export function InventoryArea({
             </Button>
           )}
           {canReorder && isReorderMode && (
-            <>
-              <Button variant="outline" size="sm" onClick={exitReorderMode} disabled={savingOrder}>
-                <X className="w-4 h-4 mr-1" />
-                Cancelar
-              </Button>
-              <Button
-                size="sm"
-                onClick={saveAndExitReorderMode}
-                className="bg-emerald-600 hover:bg-emerald-700"
-                disabled={savingOrder}
-              >
-                <Check className="w-4 h-4 mr-1" />
-                Finalizar
-              </Button>
-            </>
+            <Button
+              size="sm"
+              onClick={exitReorderMode}
+              className="bg-emerald-600 hover:bg-emerald-700"
+            >
+              <Check className="w-4 h-4 mr-1" />
+              Concluir
+            </Button>
           )}
           {!isReorderMode && (
             <Button
@@ -211,25 +162,19 @@ export function InventoryArea({
 
       <div>
         {displayItems.map((item, index) => (
-          <DraggableProductRow
+          <ReorderableProductRow
             key={item.id}
             item={item}
             index={index}
+            total={displayItems.length}
             isReorderMode={isReorderMode}
-            canDrag={canDrag}
-            isDragging={draggedIndex === index}
-            showIndicatorAbove={dropTargetIndex === index}
+            isHighlighted={highlightIndex === index}
             onUpdate={onUpdate}
             disabled={isCompleted || submitting}
-            onDragStart={handleDragStart}
-            onDragOver={handleDragOver}
-            onDrop={handleDrop}
-            onDragEnd={handleDragEnd}
+            onMoveUp={handleMoveUp}
+            onMoveDown={handleMoveDown}
           />
         ))}
-        {isReorderMode && dropTargetIndex === displayItems.length && (
-          <div className="h-1 bg-emerald-500 rounded-full mx-3 shadow-sm animate-fade-in" />
-        )}
       </div>
 
       <SummaryModal

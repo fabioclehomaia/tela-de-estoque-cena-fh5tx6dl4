@@ -1,77 +1,73 @@
 import { CountableItem } from '@/types/inventory'
 import { ProductCard } from './ProductCard'
 import { cn } from '@/lib/utils'
-import { GripVertical } from 'lucide-react'
+import { ChevronUp, ChevronDown } from 'lucide-react'
 
 interface DraggableProductRowProps {
   item: CountableItem
-  index: number
   isReorderMode: boolean
-  canDrag: boolean
-  isDragging: boolean
-  showIndicatorAbove: boolean
+  isFirst: boolean
+  isLast: boolean
+  highlighted: boolean
   onUpdate: (id: string, qty: number | null) => void
   disabled?: boolean
-  onDragStart: (index: number) => void
-  onDragOver: (e: React.DragEvent, index: number) => void
-  onDrop: () => void
-  onDragEnd: () => void
+  onMoveUp: () => void
+  onMoveDown: () => void
 }
 
 export function DraggableProductRow({
   item,
-  index,
   isReorderMode,
-  canDrag,
-  isDragging,
-  showIndicatorAbove,
+  isFirst,
+  isLast,
+  highlighted,
   onUpdate,
   disabled,
-  onDragStart,
-  onDragOver,
-  onDrop,
-  onDragEnd,
+  onMoveUp,
+  onMoveDown,
 }: DraggableProductRowProps) {
   return (
-    <>
-      {isReorderMode && showIndicatorAbove && (
-        <div className="h-1 bg-emerald-500 rounded-full mx-3 shadow-sm animate-fade-in" />
+    <div
+      className={cn(
+        'relative transition-all duration-300 rounded-xl',
+        highlighted && 'bg-emerald-50 ring-2 ring-emerald-300 ring-offset-1',
       )}
-      <div
-        draggable={isReorderMode && canDrag}
-        onDragStart={(e) => {
-          if (!isReorderMode || !canDrag) {
-            e.preventDefault()
-            return
-          }
-          e.dataTransfer.effectAllowed = 'move'
-          onDragStart(index)
-        }}
-        onDragOver={(e) => {
-          if (!isReorderMode) return
-          e.preventDefault()
-          e.dataTransfer.dropEffect = 'move'
-          onDragOver(e, index)
-        }}
-        onDrop={(e) => {
-          if (!isReorderMode) return
-          e.preventDefault()
-          onDrop()
-        }}
-        onDragEnd={onDragEnd}
-        className={cn(
-          'relative transition-opacity',
-          isReorderMode && canDrag && 'cursor-grab active:cursor-grabbing',
-          isDragging && 'opacity-30',
-        )}
-      >
-        {isReorderMode && canDrag && (
-          <div className="absolute left-1 top-4 z-10 text-zinc-300 pointer-events-none">
-            <GripVertical className="w-3.5 h-3.5" />
+    >
+      <div className="flex items-stretch gap-0.5">
+        {isReorderMode && (
+          <div className="flex flex-col justify-center gap-0.5 pl-1">
+            <button
+              type="button"
+              disabled={isFirst}
+              onClick={onMoveUp}
+              className={cn(
+                'flex items-center justify-center h-8 w-8 rounded-md transition-colors',
+                isFirst
+                  ? 'text-zinc-300 cursor-not-allowed'
+                  : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 active:bg-zinc-200',
+              )}
+            >
+              <ChevronUp className="w-5 h-5" />
+            </button>
+            <button
+              type="button"
+              disabled={isLast}
+              onClick={onMoveDown}
+              className={cn(
+                'flex items-center justify-center h-8 w-8 rounded-md transition-colors',
+                isLast
+                  ? 'text-zinc-300 cursor-not-allowed'
+                  : 'text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700 active:bg-zinc-200',
+              )}
+            >
+              <ChevronDown className="w-5 h-5" />
+            </button>
           </div>
         )}
-        <ProductCard item={item} onUpdate={onUpdate} disabled={disabled || isReorderMode} />
+        <div className="flex-1 min-w-0">
+          <ProductCard item={item} onUpdate={onUpdate} disabled={disabled || isReorderMode} />
+        </div>
       </div>
-    </>
+    </div>
   )
 }
