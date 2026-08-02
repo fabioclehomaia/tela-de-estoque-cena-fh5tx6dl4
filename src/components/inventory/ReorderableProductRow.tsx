@@ -5,7 +5,7 @@ import { ChevronUp, ChevronDown } from 'lucide-react'
 
 interface ReorderableProductRowProps {
   item: CountableItem
-  canReorder: boolean
+  isReordering: boolean
   isFirst: boolean
   isLast: boolean
   isHighlighted: boolean
@@ -17,7 +17,7 @@ interface ReorderableProductRowProps {
 
 export function ReorderableProductRow({
   item,
-  canReorder,
+  isReordering,
   isFirst,
   isLast,
   isHighlighted,
@@ -35,7 +35,7 @@ export function ReorderableProductRow({
       )}
     >
       <div className="flex items-stretch gap-0.5">
-        {canReorder && (
+        {isReordering && (
           <div className="flex flex-col justify-center gap-0.5 pl-1">
             <button
               type="button"

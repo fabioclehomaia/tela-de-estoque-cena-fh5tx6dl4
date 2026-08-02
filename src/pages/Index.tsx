@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { getProducts, Product } from '@/services/products'
 import { getAreas, getSubareas, getCategories, Area, Subarea, Category } from '@/services/inventory'
 import { getInventoryLevels, InventoryLevel } from '@/services/inventory_levels'
-import { getCountOrders, CountOrder, saveCountOrders } from '@/services/count_order'
+import { getCountOrders, CountOrder, batchSaveCountOrders } from '@/services/count_order'
 import { CountableItem } from '@/types/inventory'
 import { InventoryArea } from '@/components/inventory/InventoryArea'
 import { Button } from '@/components/ui/button'
@@ -191,7 +191,7 @@ export default function Index() {
   const handleSaveOrder = async (
     orders: Array<{ product_id: string; subarea_id: string; sort_order: number }>,
   ) => {
-    await saveCountOrders(orders)
+    await batchSaveCountOrders(orders)
     try {
       const co = await getCountOrders()
       setCountOrders(co)

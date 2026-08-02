@@ -6,9 +6,8 @@ import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { submitInventoryCounts, SubmitCountItem } from '@/services/inventory_counts'
 import { Subarea } from '@/services/inventory'
-import { ClipboardCheck } from 'lucide-react'
+import { ClipboardCheck, ArrowUpDown, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { useRealtime } from '@/hooks/use-realtime'
 
 interface InventoryAreaProps {
   areaName: string
@@ -32,25 +31,23 @@ export function InventoryArea({
   onComplete,
   userRole,
   onSaveOrder,
-  onRefreshOrder,
 }: InventoryAreaProps) {
   const [showSummary, setShowSummary] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [localItems, setLocalItems] = useState<CountableItem[]>(items)
+  const [isReordering, setIsReordering] = useState(false)
+  const [isSavingOrder, setIsSavingOrder] = useState(false)
   const [highlightIndex, setHighlightIndex] = useState<number | null>(null)
-  const canReorder = userRole === 'admin' || userRole === 'manager'
+  const canReorder = userRole === 'manager' || userRole === 'admin'
 
   const containerRef = useRef<HTMLDivElement>(null)
   const positionsRef = useRef<Map<string, number>>(new Map())
   const shouldAnimateRef = useRef(false)
+  const itemsBeforeReorderRef = useRef<CountableItem[]>([])
 
   useEffect(() => {
     setLocalItems(items)
   }, [items])
-
-  useRealtime('count_order', () => {
-    onRefreshOrder?.()
-  })
 
   useLayoutEffect(() => {
     if (!shouldAnimateRef.current) return
@@ -110,7 +107,7 @@ export function InventoryArea({
     })
   }
 
-  const swapAndSave = (fromIndex: number, toIndex: number) => {
+  const swapItems = (fromIndex: number, toIndex: number) => {
     if (toIndex < 0 || toIndex >= localItems.length) return
     if (localItems[fromIndex].subareaId !== localItems[toIndex].subareaId) return
 
@@ -120,8 +117,29 @@ export function InventoryArea({
     ;[newItems[fromIndex], newItems[toIndex]] = [newItems[toIndex], newItems[fromIndex]]
     setLocalItems(newItems)
 
+    shouldAnimateRef.current = true
+    setHighlightIndex(toIndex)
+    setTimeout(() => setHighlightIndex(null), 600)
+  }
+
+  const handleMoveUp = (index: number) => {
+    swapItems(index, index - 1)
+  }
+
+  const handleMoveDown = (index: number) => {
+    swapItems(index, index + 1)
+  }
+
+  const handleStartReordering = () => {
+    itemsBeforeReorderRef.current = [...localItems]
+    setIsReordering(true)
+  }
+
+  const handleFinishReordering = async () => {
+    setIsSavingOrder(true)
+
     const subareaCounters = new Map<string, number>()
-    const orders = newItems.map((item) => {
+    const orders = localItems.map((item) => {
       const counter = subareaCounters.get(item.subareaId) ?? 0
       subareaCounters.set(item.subareaId, counter + 1)
       return {
@@ -131,23 +149,15 @@ export function InventoryArea({
       }
     })
 
-    shouldAnimateRef.current = true
-    setHighlightIndex(toIndex)
-    setTimeout(() => setHighlightIndex(null), 600)
-
-    onSaveOrder(orders).catch(() => {
-      toast.error('Erro ao salvar ordem. Revertendo para a posição original.')
-      shouldAnimateRef.current = false
-      setLocalItems(items)
-    })
-  }
-
-  const handleMoveUp = (index: number) => {
-    swapAndSave(index, index - 1)
-  }
-
-  const handleMoveDown = (index: number) => {
-    swapAndSave(index, index + 1)
+    try {
+      await onSaveOrder(orders)
+      setIsReordering(false)
+    } catch {
+      toast.error('Erro ao salvar a ordem. A lista foi restaurada à ordem anterior.')
+      setLocalItems(itemsBeforeReorderRef.current)
+    } finally {
+      setIsSavingOrder(false)
+    }
   }
 
   const handleSubmit = async () => {
@@ -181,9 +191,35 @@ export function InventoryArea({
           <Progress value={progress} className="h-2" />
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          {canReorder && !isReordering && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleStartReordering}
+              disabled={isCompleted || submitting}
+            >
+              <ArrowUpDown className="w-4 h-4 mr-2" />
+              Reordenar
+            </Button>
+          )}
+          {canReorder && isReordering && (
+            <Button size="sm" onClick={handleFinishReordering} disabled={isSavingOrder}>
+              {isSavingOrder ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Salvando...
+                </>
+              ) : (
+                <>
+                  <ClipboardCheck className="w-4 h-4 mr-2" />
+                  Concluir
+                </>
+              )}
+            </Button>
+          )}
           <Button
             className="bg-emerald-600 hover:bg-emerald-700"
-            disabled={!allCounted || submitting || isCompleted}
+            disabled={!allCounted || submitting || isCompleted || isReordering}
             onClick={() => setShowSummary(true)}
           >
             <ClipboardCheck className="w-4 h-4 mr-2" />
@@ -203,12 +239,12 @@ export function InventoryArea({
             <ReorderableProductRow
               key={item.id}
               item={item}
-              canReorder={canReorder}
+              isReordering={isReordering}
               isFirst={isFirstInSubarea}
               isLast={isLastInSubarea}
               isHighlighted={highlightIndex === index}
               onUpdate={onUpdate}
-              disabled={isCompleted || submitting}
+              disabled={isCompleted || submitting || isSavingOrder}
               onMoveUp={() => handleMoveUp(index)}
               onMoveDown={() => handleMoveDown(index)}
             />

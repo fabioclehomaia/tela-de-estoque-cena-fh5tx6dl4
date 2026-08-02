@@ -2,6 +2,16 @@ import pb from '@/lib/pocketbase/client'
 import { Product } from './products'
 import { Subarea } from './inventory'
 
+export const batchSaveCountOrders = async (
+  items: Array<{ product_id: string; subarea_id: string; sort_order: number }>,
+) => {
+  return pb.send('/backend/v1/count-order/batch', {
+    method: 'POST',
+    body: JSON.stringify({ items }),
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
 export interface CountOrder {
   id: string
   product_id: string
