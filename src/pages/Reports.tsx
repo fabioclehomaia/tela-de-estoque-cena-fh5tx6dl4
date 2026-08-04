@@ -69,6 +69,9 @@ import { cn } from '@/lib/utils'
 
 const safeDate = (dateStr: string) => parseISO(dateStr.replace(' ', 'T'))
 
+const formatCurrency = (value: number) =>
+  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)
+
 export default function Reports() {
   const { toast } = useToast()
   const [counts, setCounts] = useState<InventoryCount[]>([])
@@ -431,6 +434,85 @@ export default function Reports() {
 
     return { chartData, chartProducts }
   }, [priceHistory, products, startDate, endDate, selectedPriceProducts])
+
+  // --- SPENDING BY PRODUCT (TRENDS TAB) ---
+  const spendingByProduct = useMemo(() => {
+    const validCounts = counts.filter((c) => {
+      const product = c.expand?.product_id
+      if (!product || !products.find((p) => p.id === product.id)?.active) return false
+
+      if (startDate && endDate) {
+        const date = safeDate(c.created)
+        const start = startOfDay(safeDate(startDate))
+        const end = endOfDay(safeDate(endDate))
+        if (!isWithinInterval(date, { start, end })) return false
+      } else if (startDate) {
+        if (safeDate(c.created) < startOfDay(safeDate(startDate))) return false
+      } else if (endDate) {
+        if (safeDate(c.created) > endOfDay(safeDate(endDate))) return false
+      }
+
+      if (categoryId !== '_all_' && product.category_id !== categoryId) return false
+      const subarea = c.expand?.subarea_id
+      if (areaId !== '_all_' && subarea?.expand?.area_id?.id !== areaId) return false
+      if (subareaId !== '_all_' && subarea?.id !== subareaId) return false
+      if (searchQuery && !product.name.toLowerCase().includes(searchQuery.toLowerCase()))
+        return false
+
+      return true
+    })
+
+    const productMap = new Map<
+      string,
+      {
+        product: any
+        totalQuantity: number
+        totalValue: number
+        unitPrice: number
+      }
+    >()
+
+    validCounts.forEach((c) => {
+      const product = c.expand?.product_id
+      if (!product) return
+
+      const countDate = safeDate(c.created)
+
+      const relevantHistory = priceHistory
+        .filter((h) => h.product_id === product.id)
+        .filter((h) => safeDate(h.created) <= countDate)
+        .sort((a, b) => safeDate(b.created).getTime() - safeDate(a.created).getTime())
+
+      const unitPrice = relevantHistory.length > 0 ? relevantHistory[0].price : (product.price ?? 0)
+
+      const countedQty = c.counted_quantity ?? 0
+      const value = countedQty * unitPrice
+
+      if (!productMap.has(product.id)) {
+        productMap.set(product.id, {
+          product,
+          totalQuantity: 0,
+          totalValue: 0,
+          unitPrice,
+        })
+      }
+      const entry = productMap.get(product.id)!
+      entry.totalQuantity += countedQty
+      entry.totalValue += value
+    })
+
+    return Array.from(productMap.values()).sort((a, b) => b.totalValue - a.totalValue)
+  }, [
+    counts,
+    products,
+    priceHistory,
+    startDate,
+    endDate,
+    categoryId,
+    areaId,
+    subareaId,
+    searchQuery,
+  ])
 
   // --- EXPORT LOGIC ---
   const handleExport = () => {
@@ -1318,6 +1400,93 @@ export default function Reports() {
               </Table>
             </div>
           </div>
+
+          {/* SPENDING BY PRODUCT BLOCK */}
+          <Card className="shadow-sm border-zinc-200 bg-white">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg font-serif flex items-center gap-2">
+                <DollarSign className="w-5 h-5 text-emerald-700" />
+                Valor gasto por produto
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {spendingByProduct.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader className="bg-zinc-50">
+                      <TableRow>
+                        <TableHead>Produto</TableHead>
+                        <TableHead>Categoria</TableHead>
+                        <TableHead className="text-right">Qtd. Contada</TableHead>
+                        <TableHead className="text-right">Preço Unitário</TableHead>
+                        <TableHead className="text-right">Valor Total</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {spendingByProduct.map((item) => (
+                        <TableRow key={item.product.id}>
+                          <TableCell className="font-medium text-zinc-900">
+                            <div className="flex items-center gap-3">
+                              {item.product.image ? (
+                                <div className="w-8 h-8 rounded border border-zinc-200 overflow-hidden bg-zinc-50 shrink-0">
+                                  <img
+                                    src={`${pb.baseUrl}/api/files/products/${item.product.id}/${item.product.image}?thumb=100x100`}
+                                    alt={item.product.name}
+                                    className="w-full h-full object-cover"
+                                  />
+                                </div>
+                              ) : (
+                                <div className="w-8 h-8 rounded border border-zinc-200 bg-zinc-50 flex items-center justify-center shrink-0">
+                                  <ImageIcon className="w-4 h-4 text-zinc-300" />
+                                </div>
+                              )}
+                              <div>
+                                {item.product.name}
+                                <span className="text-xs text-zinc-500 ml-1">
+                                  ({item.product.unit})
+                                </span>
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="text-xs">
+                              {getCategoryName(item.product.category_id)}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right font-medium text-zinc-700">
+                            {item.totalQuantity}{' '}
+                            <span className="text-xs font-normal text-zinc-400">
+                              {item.product.unit}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right text-zinc-700">
+                            {formatCurrency(item.unitPrice)}
+                          </TableCell>
+                          <TableCell className="text-right font-bold text-emerald-700">
+                            {formatCurrency(item.totalValue)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      <TableRow className="bg-zinc-50 border-t-2 border-zinc-200">
+                        <TableCell colSpan={4} className="font-bold text-zinc-900 text-right">
+                          Total Geral
+                        </TableCell>
+                        <TableCell className="text-right font-bold text-emerald-800 text-base">
+                          {formatCurrency(
+                            spendingByProduct.reduce((sum, item) => sum + item.totalValue, 0),
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : (
+                <div className="h-32 flex items-center justify-center text-zinc-500 text-sm">
+                  Nenhuma contagem encontrada no período selecionado.
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* PRICES TAB */}
