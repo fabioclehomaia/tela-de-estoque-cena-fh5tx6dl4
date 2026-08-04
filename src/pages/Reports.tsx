@@ -96,6 +96,7 @@ export default function Reports() {
   const [exportFormat, setExportFormat] = useState<'csv' | 'pdf' | 'doc'>('pdf')
   const [priceHistory, setPriceHistory] = useState<ProductPriceHistory[]>([])
   const [selectedPriceProducts, setSelectedPriceProducts] = useState<string[]>([])
+  const [activeShortcut, setActiveShortcut] = useState<string>('')
 
   useEffect(() => {
     const loadData = async () => {
@@ -655,6 +656,7 @@ export default function Reports() {
     setSearchQuery('')
     setSortField('name')
     setSortDirection('asc')
+    setActiveShortcut('')
   }
 
   if (loading) {
@@ -721,14 +723,20 @@ export default function Reports() {
                     <Input
                       type="date"
                       value={startDate}
-                      onChange={(e) => setStartDate(e.target.value)}
+                      onChange={(e) => {
+                        setStartDate(e.target.value)
+                        setActiveShortcut('')
+                      }}
                       className="w-full text-sm"
                     />
                     <span className="text-zinc-400">até</span>
                     <Input
                       type="date"
                       value={endDate}
-                      onChange={(e) => setEndDate(e.target.value)}
+                      onChange={(e) => {
+                        setEndDate(e.target.value)
+                        setActiveShortcut('')
+                      }}
                       className="w-full text-sm"
                     />
                   </div>
@@ -736,10 +744,16 @@ export default function Reports() {
               )}
 
               {activeTab === 'trends' && (
-                <div className="space-y-1.5 flex flex-col justify-end">
+                <div className="space-y-1.5">
+                  <Label>Atalhos</Label>
                   <Select
+                    value={activeShortcut}
                     onValueChange={(val) => {
-                      if (val === '30') {
+                      setActiveShortcut(val)
+                      if (val === '1_week') {
+                        setStartDate(format(subDays(new Date(), 7), 'yyyy-MM-dd'))
+                        setEndDate(format(new Date(), 'yyyy-MM-dd'))
+                      } else if (val === '30') {
                         setStartDate(format(subDays(new Date(), 30), 'yyyy-MM-dd'))
                         setEndDate(format(new Date(), 'yyyy-MM-dd'))
                       } else if (val === 'last_month') {
@@ -751,9 +765,10 @@ export default function Reports() {
                     }}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Atalhos..." />
+                      <SelectValue placeholder="Personalizado" />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="1_week">1 Semana</SelectItem>
                       <SelectItem value="30">Últimos 30 dias</SelectItem>
                       <SelectItem value="last_month">Mês Passado</SelectItem>
                     </SelectContent>
