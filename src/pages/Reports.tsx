@@ -466,9 +466,8 @@ export default function Reports() {
       string,
       {
         product: any
-        totalQuantity: number
-        totalValue: number
-        unitPrice: number
+        consumedQuantity: number
+        consumedValue: number
       }
     >()
 
@@ -476,32 +475,39 @@ export default function Reports() {
       const product = c.expand?.product_id
       if (!product) return
 
+      const consumed = Math.max(0, (c.previous_quantity ?? 0) - (c.counted_quantity ?? 0))
+      if (consumed === 0) return
+
       const countDate = safeDate(c.created)
 
-      const relevantHistory = priceHistory
-        .filter((h) => h.product_id === product.id)
-        .filter((h) => safeDate(h.created) <= countDate)
-        .sort((a, b) => safeDate(b.created).getTime() - safeDate(a.created).getTime())
+      const applicablePrice = (() => {
+        const relevantHistory = priceHistory
+          .filter((h) => h.product_id === product.id)
+          .filter((h) => safeDate(h.created) <= countDate)
+          .sort((a, b) => safeDate(b.created).getTime() - safeDate(a.created).getTime())
 
-      const unitPrice = relevantHistory.length > 0 ? relevantHistory[0].price : (product.price ?? 0)
-
-      const countedQty = c.counted_quantity ?? 0
-      const value = countedQty * unitPrice
+        return relevantHistory.length > 0 ? relevantHistory[0].price : (product.price ?? 0)
+      })()
 
       if (!productMap.has(product.id)) {
         productMap.set(product.id, {
           product,
-          totalQuantity: 0,
-          totalValue: 0,
-          unitPrice,
+          consumedQuantity: 0,
+          consumedValue: 0,
         })
       }
       const entry = productMap.get(product.id)!
-      entry.totalQuantity += countedQty
-      entry.totalValue += value
+      entry.consumedQuantity += consumed
+      entry.consumedValue += consumed * applicablePrice
     })
 
-    return Array.from(productMap.values()).sort((a, b) => b.totalValue - a.totalValue)
+    return Array.from(productMap.values())
+      .map((entry) => ({
+        ...entry,
+        effectivePrice:
+          entry.consumedQuantity > 0 ? entry.consumedValue / entry.consumedQuantity : 0,
+      }))
+      .sort((a, b) => b.consumedValue - a.consumedValue)
   }, [
     counts,
     products,
@@ -1406,7 +1412,7 @@ export default function Reports() {
             <CardHeader className="pb-2">
               <CardTitle className="text-lg font-serif flex items-center gap-2">
                 <DollarSign className="w-5 h-5 text-emerald-700" />
-                Valor gasto por produto
+                Valor Consumido por Produto
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -1417,9 +1423,9 @@ export default function Reports() {
                       <TableRow>
                         <TableHead>Produto</TableHead>
                         <TableHead>Categoria</TableHead>
-                        <TableHead className="text-right">Qtd. Contada</TableHead>
-                        <TableHead className="text-right">Preço Unitário</TableHead>
-                        <TableHead className="text-right">Valor Total</TableHead>
+                        <TableHead className="text-right">Qtd. Consumida</TableHead>
+                        <TableHead className="text-right">Preço Efetivo</TableHead>
+                        <TableHead className="text-right">Valor Consumido</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1454,16 +1460,16 @@ export default function Reports() {
                             </Badge>
                           </TableCell>
                           <TableCell className="text-right font-medium text-zinc-700">
-                            {item.totalQuantity}{' '}
+                            {item.consumedQuantity}{' '}
                             <span className="text-xs font-normal text-zinc-400">
                               {item.product.unit}
                             </span>
                           </TableCell>
                           <TableCell className="text-right text-zinc-700">
-                            {formatCurrency(item.unitPrice)}
+                            {formatCurrency(item.effectivePrice)}
                           </TableCell>
                           <TableCell className="text-right font-bold text-emerald-700">
-                            {formatCurrency(item.totalValue)}
+                            {formatCurrency(item.consumedValue)}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -1473,7 +1479,7 @@ export default function Reports() {
                         </TableCell>
                         <TableCell className="text-right font-bold text-emerald-800 text-base">
                           {formatCurrency(
-                            spendingByProduct.reduce((sum, item) => sum + item.totalValue, 0),
+                            spendingByProduct.reduce((sum, item) => sum + item.consumedValue, 0),
                           )}
                         </TableCell>
                       </TableRow>
@@ -1482,7 +1488,7 @@ export default function Reports() {
                 </div>
               ) : (
                 <div className="h-32 flex items-center justify-center text-zinc-500 text-sm">
-                  Nenhuma contagem encontrada no período selecionado.
+                  Nenhum consumo registrado no período selecionado.
                 </div>
               )}
             </CardContent>
