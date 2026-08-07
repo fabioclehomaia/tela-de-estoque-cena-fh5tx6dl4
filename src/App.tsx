@@ -11,6 +11,9 @@ import Areas from './pages/Areas'
 import Subareas from './pages/Subareas'
 import Categories from './pages/Categories'
 import Products from './pages/Products'
+import Purchases from './pages/Purchases'
+import Suppliers from './pages/Suppliers'
+import Faturamento from './pages/Faturamento'
 
 import Reports from './pages/Reports'
 import { AuthProvider } from './hooks/use-auth'
@@ -38,6 +41,9 @@ const App = () => (
                 <Route path="/subareas" element={<Subareas />} />
                 <Route path="/categories" element={<Categories />} />
                 <Route path="/products" element={<Products />} />
+                <Route path="/suppliers" element={<Suppliers />} />
+                <Route path="/purchases" element={<Purchases />} />
+                <Route path="/faturamento" element={<Faturamento />} />
 
                 <Route path="/reports" element={<Reports />} />
               </Route>

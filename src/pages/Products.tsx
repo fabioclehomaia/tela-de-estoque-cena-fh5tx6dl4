@@ -89,6 +89,18 @@ const schema = z
       .transform((v) => (v ? Number(v) : null))
       .optional(),
     category_id: z.string().min(1, 'Selecione a categoria'),
+    cost_category: z
+      .enum([
+        'CMV',
+        'Manutenção predial',
+        'Utensílios',
+        'Alimentação de funcionários',
+        'Limpeza',
+        'Descartáveis',
+        'Decoração',
+        'Operacional',
+      ])
+      .default('CMV'),
     locations: z.array(locationSchema).optional().default([]),
     image: z.any().optional(),
     active: z.boolean().default(true),
@@ -130,6 +142,7 @@ export default function Products() {
       min_stock: undefined as any,
       price: undefined as any,
       category_id: '',
+      cost_category: 'CMV',
       locations: [],
       image: null,
       active: true,
@@ -170,6 +183,7 @@ export default function Products() {
       if (data.validity_days) formData.append('validity_days', data.validity_days.toString())
       if (data.min_stock) formData.append('min_stock', data.min_stock.toString())
       formData.append('category_id', data.category_id)
+      formData.append('cost_category', data.cost_category)
       formData.append('active', String(data.active))
 
       if (data.image instanceof File) {
@@ -229,6 +243,7 @@ export default function Products() {
         min_stock: undefined as any,
         price: undefined as any,
         category_id: '',
+        cost_category: 'CMV',
         locations: [],
         image: null,
         active: true,
@@ -261,6 +276,7 @@ export default function Products() {
       min_stock: p.min_stock?.toString() as any,
       price: p.price?.toString() as any,
       category_id: p.category_id,
+      cost_category: p.cost_category || 'CMV',
       locations: pLevels.map((l) => ({
         area_id: l.expand?.subarea_id?.area_id || '',
         subarea_id: l.subarea_id,
@@ -284,6 +300,7 @@ export default function Products() {
         min_stock: undefined as any,
         price: undefined as any,
         category_id: '',
+        cost_category: 'CMV',
         locations: [],
         image: null,
         active: true,
@@ -347,6 +364,7 @@ export default function Products() {
                   min_stock: undefined as any,
                   price: undefined as any,
                   category_id: '',
+                  cost_category: 'CMV',
                   locations: [],
                   image: null,
                   active: true,
@@ -471,6 +489,36 @@ export default function Products() {
                           value={field.value ?? ''}
                         />
                       </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="cost_category"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Categoria de Custo</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecione" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="CMV">CMV</SelectItem>
+                          <SelectItem value="Manutenção predial">Manutenção predial</SelectItem>
+                          <SelectItem value="Utensílios">Utensílios</SelectItem>
+                          <SelectItem value="Alimentação de funcionários">
+                            Alimentação de funcionários
+                          </SelectItem>
+                          <SelectItem value="Limpeza">Limpeza</SelectItem>
+                          <SelectItem value="Descartáveis">Descartáveis</SelectItem>
+                          <SelectItem value="Decoração">Decoração</SelectItem>
+                          <SelectItem value="Operacional">Operacional</SelectItem>
+                        </SelectContent>
+                      </Select>
                       <FormMessage />
                     </FormItem>
                   )}

@@ -11,6 +11,15 @@ export interface Product {
   category_id: string
   active: boolean
   image?: string
+  cost_category?:
+    | 'CMV'
+    | 'Manutenção predial'
+    | 'Utensílios'
+    | 'Alimentação de funcionários'
+    | 'Limpeza'
+    | 'Descartáveis'
+    | 'Decoração'
+    | 'Operacional'
   created: string
   updated: string
   expand?: {

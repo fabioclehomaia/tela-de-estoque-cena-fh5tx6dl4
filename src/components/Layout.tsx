@@ -10,6 +10,9 @@ import {
   MapPin,
   Map,
   Tags,
+  ShoppingCart,
+  Truck,
+  DollarSign,
 } from 'lucide-react'
 import {
   Sheet,
@@ -46,6 +49,9 @@ export default function Layout() {
     { path: '/subareas', label: 'Subáreas', icon: Map, roles: ['admin', 'manager'] },
     { path: '/categories', label: 'Categorias', icon: Tags, roles: ['admin', 'manager'] },
     { path: '/products', label: 'Produtos', icon: Package, roles: ['admin', 'manager'] },
+    { path: '/suppliers', label: 'Fornecedores', icon: Truck, roles: ['admin', 'manager'] },
+    { path: '/purchases', label: 'Compras', icon: ShoppingCart, roles: ['admin', 'manager'] },
+    { path: '/faturamento', label: 'Faturamento', icon: DollarSign, roles: ['admin', 'manager'] },
     { path: '/reports', label: 'Relatórios', icon: FileText, roles: ['admin', 'manager'] },
     { path: '/users', label: 'Usuários', icon: Users, roles: ['admin'] },
   ]

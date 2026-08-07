@@ -25,6 +25,8 @@ import {
   DollarSign,
   ArrowUp,
   ArrowDown,
+  Calculator,
+  BarChart3,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -66,6 +68,8 @@ import { getProductPriceHistory, ProductPriceHistory } from '@/services/product_
 import pb from '@/lib/pocketbase/client'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
+import { CmvReport } from '@/components/reports/CmvReport'
+import { FinancialDashboard } from '@/components/reports/FinancialDashboard'
 
 const safeDate = (dateStr: string) => parseISO(dateStr.replace(' ', 'T'))
 
@@ -772,7 +776,7 @@ export default function Reports() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 mb-6 h-auto">
+        <TabsList className="grid w-full grid-cols-2 md:grid-cols-7 mb-6 h-auto">
           <TabsTrigger
             value="history"
             className="flex flex-col md:flex-row items-center gap-2 py-2"
@@ -799,176 +803,188 @@ export default function Reports() {
           <TabsTrigger value="prices" className="flex flex-col md:flex-row items-center gap-2 py-2">
             <DollarSign className="w-4 h-4" /> <span className="hidden md:inline">Preços</span>
           </TabsTrigger>
+          <TabsTrigger value="cmv" className="flex flex-col md:flex-row items-center gap-2 py-2">
+            <Calculator className="w-4 h-4" /> <span className="hidden md:inline">CMV</span>
+          </TabsTrigger>
+          <TabsTrigger
+            value="financial"
+            className="flex flex-col md:flex-row items-center gap-2 py-2"
+          >
+            <BarChart3 className="w-4 h-4" />{' '}
+            <span className="hidden md:inline">Análise Financeira</span>
+          </TabsTrigger>
         </TabsList>
 
-        <Card className="shadow-sm border-zinc-200 mb-6 bg-white">
-          <CardContent className="p-4 space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 items-end">
-              {(activeTab === 'history' || activeTab === 'trends' || activeTab === 'prices') && (
-                <div className="space-y-1.5 lg:col-span-2">
-                  <Label>Período</Label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="date"
-                      value={startDate}
-                      onChange={(e) => {
-                        setStartDate(e.target.value)
-                        setActiveShortcut('')
-                      }}
-                      className="w-full text-sm"
-                    />
-                    <span className="text-zinc-400">até</span>
-                    <Input
-                      type="date"
-                      value={endDate}
-                      onChange={(e) => {
-                        setEndDate(e.target.value)
-                        setActiveShortcut('')
-                      }}
-                      className="w-full text-sm"
-                    />
+        {activeTab !== 'cmv' && activeTab !== 'financial' && (
+          <Card className="shadow-sm border-zinc-200 mb-6 bg-white">
+            <CardContent className="p-4 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 items-end">
+                {(activeTab === 'history' || activeTab === 'trends' || activeTab === 'prices') && (
+                  <div className="space-y-1.5 lg:col-span-2">
+                    <Label>Período</Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="date"
+                        value={startDate}
+                        onChange={(e) => {
+                          setStartDate(e.target.value)
+                          setActiveShortcut('')
+                        }}
+                        className="w-full text-sm"
+                      />
+                      <span className="text-zinc-400">até</span>
+                      <Input
+                        type="date"
+                        value={endDate}
+                        onChange={(e) => {
+                          setEndDate(e.target.value)
+                          setActiveShortcut('')
+                        }}
+                        className="w-full text-sm"
+                      />
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {activeTab === 'trends' && (
+                {activeTab === 'trends' && (
+                  <div className="space-y-1.5">
+                    <Label>Atalhos</Label>
+                    <Select
+                      value={activeShortcut}
+                      onValueChange={(val) => {
+                        setActiveShortcut(val)
+                        if (val === '1_week') {
+                          setStartDate(format(subDays(new Date(), 7), 'yyyy-MM-dd'))
+                          setEndDate(format(new Date(), 'yyyy-MM-dd'))
+                        } else if (val === '30') {
+                          setStartDate(format(subDays(new Date(), 30), 'yyyy-MM-dd'))
+                          setEndDate(format(new Date(), 'yyyy-MM-dd'))
+                        } else if (val === 'last_month') {
+                          const start = startOfMonth(subMonths(new Date(), 1))
+                          const end = endOfMonth(subMonths(new Date(), 1))
+                          setStartDate(format(start, 'yyyy-MM-dd'))
+                          setEndDate(format(end, 'yyyy-MM-dd'))
+                        }
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Personalizado" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1_week">1 Semana</SelectItem>
+                        <SelectItem value="30">Últimos 30 dias</SelectItem>
+                        <SelectItem value="last_month">Mês Passado</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {(activeTab === 'summary' ||
+                  activeTab === 'shopping' ||
+                  activeTab === 'trends' ||
+                  activeTab === 'history') && (
+                  <div className="space-y-1.5">
+                    <Label>Categoria</Label>
+                    <Select value={categoryId} onValueChange={setCategoryId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Todas" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="_all_">Todas</SelectItem>
+                        {categories.map((c) => (
+                          <SelectItem key={c.id} value={c.id}>
+                            {c.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {activeTab === 'history' && (
+                  <div className="space-y-1.5">
+                    <Label>Funcionário</Label>
+                    <Select value={userId} onValueChange={setUserId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Todos" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="_all_">Todos</SelectItem>
+                        {users.map((u) => (
+                          <SelectItem key={u.id} value={u.id}>
+                            {u.name || u.email}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
                 <div className="space-y-1.5">
-                  <Label>Atalhos</Label>
+                  <Label>Área</Label>
                   <Select
-                    value={activeShortcut}
+                    value={areaId}
                     onValueChange={(val) => {
-                      setActiveShortcut(val)
-                      if (val === '1_week') {
-                        setStartDate(format(subDays(new Date(), 7), 'yyyy-MM-dd'))
-                        setEndDate(format(new Date(), 'yyyy-MM-dd'))
-                      } else if (val === '30') {
-                        setStartDate(format(subDays(new Date(), 30), 'yyyy-MM-dd'))
-                        setEndDate(format(new Date(), 'yyyy-MM-dd'))
-                      } else if (val === 'last_month') {
-                        const start = startOfMonth(subMonths(new Date(), 1))
-                        const end = endOfMonth(subMonths(new Date(), 1))
-                        setStartDate(format(start, 'yyyy-MM-dd'))
-                        setEndDate(format(end, 'yyyy-MM-dd'))
-                      }
+                      setAreaId(val)
+                      setSubareaId('_all_')
                     }}
                   >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Personalizado" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="1_week">1 Semana</SelectItem>
-                      <SelectItem value="30">Últimos 30 dias</SelectItem>
-                      <SelectItem value="last_month">Mês Passado</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-
-              {(activeTab === 'summary' ||
-                activeTab === 'shopping' ||
-                activeTab === 'trends' ||
-                activeTab === 'history') && (
-                <div className="space-y-1.5">
-                  <Label>Categoria</Label>
-                  <Select value={categoryId} onValueChange={setCategoryId}>
                     <SelectTrigger>
                       <SelectValue placeholder="Todas" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="_all_">Todas</SelectItem>
-                      {categories.map((c) => (
-                        <SelectItem key={c.id} value={c.id}>
-                          {c.name}
+                      {areas.map((a) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.name}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-              )}
 
-              {activeTab === 'history' && (
                 <div className="space-y-1.5">
-                  <Label>Funcionário</Label>
-                  <Select value={userId} onValueChange={setUserId}>
+                  <Label>Subárea</Label>
+                  <Select
+                    value={subareaId}
+                    onValueChange={setSubareaId}
+                    disabled={areaId === '_all_'}
+                  >
                     <SelectTrigger>
-                      <SelectValue placeholder="Todos" />
+                      <SelectValue placeholder="Todas" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="_all_">Todos</SelectItem>
-                      {users.map((u) => (
-                        <SelectItem key={u.id} value={u.id}>
-                          {u.name || u.email}
-                        </SelectItem>
-                      ))}
+                      <SelectItem value="_all_">Todas</SelectItem>
+                      {subareas
+                        .filter((s) => s.area_id === areaId)
+                        .map((s) => (
+                          <SelectItem key={s.id} value={s.id}>
+                            {s.name}
+                          </SelectItem>
+                        ))}
                     </SelectContent>
                   </Select>
                 </div>
-              )}
-
-              <div className="space-y-1.5">
-                <Label>Área</Label>
-                <Select
-                  value={areaId}
-                  onValueChange={(val) => {
-                    setAreaId(val)
-                    setSubareaId('_all_')
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Todas" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="_all_">Todas</SelectItem>
-                    {areas.map((a) => (
-                      <SelectItem key={a.id} value={a.id}>
-                        {a.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
               </div>
 
-              <div className="space-y-1.5">
-                <Label>Subárea</Label>
-                <Select
-                  value={subareaId}
-                  onValueChange={setSubareaId}
-                  disabled={areaId === '_all_'}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Todas" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="_all_">Todas</SelectItem>
-                    {subareas
-                      .filter((s) => s.area_id === areaId)
-                      .map((s) => (
-                        <SelectItem key={s.id} value={s.id}>
-                          {s.name}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
+              <div className="flex items-center justify-between gap-4 border-t border-zinc-100 pt-4 mt-2">
+                <div className="relative flex-1 max-w-sm">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-zinc-400" />
+                  <Input
+                    type="text"
+                    placeholder="Buscar por produto..."
+                    className="pl-9"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </div>
+                <Button variant="outline" size="sm" onClick={clearFilters}>
+                  <FilterX className="h-4 w-4 mr-2" /> Limpar
+                </Button>
               </div>
-            </div>
-
-            <div className="flex items-center justify-between gap-4 border-t border-zinc-100 pt-4 mt-2">
-              <div className="relative flex-1 max-w-sm">
-                <Search className="absolute left-3 top-2.5 h-4 w-4 text-zinc-400" />
-                <Input
-                  type="text"
-                  placeholder="Buscar por produto..."
-                  className="pl-9"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-              </div>
-              <Button variant="outline" size="sm" onClick={clearFilters}>
-                <FilterX className="h-4 w-4 mr-2" /> Limpar
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
 
         {/* HISTÓRICO TAB */}
         <TabsContent value="history" className="space-y-6">
@@ -1575,6 +1591,14 @@ export default function Reports() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="cmv">
+          <CmvReport />
+        </TabsContent>
+
+        <TabsContent value="financial">
+          <FinancialDashboard />
         </TabsContent>
       </Tabs>
 
