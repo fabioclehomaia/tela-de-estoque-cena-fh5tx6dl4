@@ -27,6 +27,8 @@ import {
   ArrowDown,
   Calculator,
   BarChart3,
+  ChevronDown,
+  Layers,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -52,6 +54,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -75,6 +78,17 @@ const safeDate = (dateStr: string) => parseISO(dateStr.replace(' ', 'T'))
 
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)
+
+const COST_CATEGORIES = [
+  'CMV',
+  'Manutenção predial',
+  'Utensílios',
+  'Alimentação de funcionários',
+  'Limpeza',
+  'Descartáveis',
+  'Decoração',
+  'Operacional',
+] as const
 
 export default function Reports() {
   const { toast } = useToast()
@@ -103,6 +117,8 @@ export default function Reports() {
   const [exportFormat, setExportFormat] = useState<'csv' | 'pdf' | 'doc'>('pdf')
   const [priceHistory, setPriceHistory] = useState<ProductPriceHistory[]>([])
   const [selectedPriceProducts, setSelectedPriceProducts] = useState<string[]>([])
+  const [priceSearchQuery, setPriceSearchQuery] = useState('')
+  const [selectedCostCategories, setSelectedCostCategories] = useState<string[]>([])
   const [activeShortcut, setActiveShortcut] = useState<string>('')
 
   useEffect(() => {
@@ -396,7 +412,23 @@ export default function Reports() {
   }, [counts, products, startDate, endDate, categoryId, areaId, subareaId, searchQuery])
 
   const priceEvolutionData = useMemo(() => {
+    const filteredProductIds = new Set(
+      products
+        .filter((p) => {
+          if (priceSearchQuery && !p.name.toLowerCase().includes(priceSearchQuery.toLowerCase()))
+            return false
+          if (
+            selectedCostCategories.length > 0 &&
+            !selectedCostCategories.includes(p.cost_category || 'CMV')
+          )
+            return false
+          return true
+        })
+        .map((p) => p.id),
+    )
+
     const history = priceHistory.filter((h) => {
+      if (!filteredProductIds.has(h.product_id)) return false
       const product = products.find((p) => p.id === h.product_id)
       if (!product) return false
       if (startDate && endDate) {
@@ -437,8 +469,15 @@ export default function Reports() {
       .filter(Boolean) as Product[]
 
     return { chartData, chartProducts }
-  }, [priceHistory, products, startDate, endDate, selectedPriceProducts])
-
+  }, [
+    priceHistory,
+    products,
+    startDate,
+    endDate,
+    selectedPriceProducts,
+    priceSearchQuery,
+    selectedCostCategories,
+  ])
   // --- SPENDING BY PRODUCT (TRENDS TAB) ---
   const spendingByProduct = useMemo(() => {
     const validCounts = counts.filter((c) => {
@@ -1518,43 +1557,129 @@ export default function Reports() {
               <CardTitle className="text-lg font-serif">Relatório Evolutivo de Preços</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="mb-4">
-                <Label className="mb-2 block">Selecionar Produtos</Label>
-                <div className="max-h-40 overflow-y-auto border border-zinc-200 rounded-md p-3 space-y-2 bg-zinc-50/50">
-                  {products.length === 0 && (
-                    <p className="text-sm text-zinc-500 text-center py-2">
-                      Nenhum produto cadastrado.
-                    </p>
-                  )}
-                  {products.map((p) => (
-                    <label
-                      key={p.id}
-                      className="flex items-center gap-2 text-sm cursor-pointer hover:text-emerald-700"
-                    >
-                      <Checkbox
-                        checked={selectedPriceProducts.includes(p.id)}
-                        onCheckedChange={(checked) => {
-                          if (checked === true) {
-                            setSelectedPriceProducts((prev) => [...prev, p.id])
-                          } else {
-                            setSelectedPriceProducts((prev) => prev.filter((id) => id !== p.id))
-                          }
-                        }}
+              <div className="mb-4 space-y-3">
+                <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
+                  <div className="flex-1 space-y-1.5">
+                    <Label>Buscar produto</Label>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-2.5 h-4 w-4 text-zinc-400" />
+                      <Input
+                        type="text"
+                        placeholder="Buscar por nome do produto..."
+                        className="pl-9"
+                        value={priceSearchQuery}
+                        onChange={(e) => setPriceSearchQuery(e.target.value)}
                       />
-                      {p.name}
-                    </label>
-                  ))}
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Categoria de custo</Label>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          className="w-full sm:w-[280px] justify-between font-normal"
+                        >
+                          <span className="flex items-center gap-2 truncate">
+                            <Layers className="h-4 w-4 shrink-0 text-zinc-400" />
+                            {selectedCostCategories.length === 0
+                              ? 'Todas as categorias'
+                              : selectedCostCategories.length === 1
+                                ? selectedCostCategories[0]
+                                : `${selectedCostCategories.length} categorias`}
+                          </span>
+                          <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-[280px] p-0" align="start">
+                        <div className="p-1">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedCostCategories([])}
+                            className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm cursor-pointer hover:bg-zinc-100"
+                          >
+                            <Checkbox checked={selectedCostCategories.length === 0} />
+                            Todas as categorias
+                          </button>
+                          {COST_CATEGORIES.map((cat) => (
+                            <button
+                              key={cat}
+                              type="button"
+                              onClick={() => {
+                                setSelectedCostCategories((prev) =>
+                                  prev.includes(cat)
+                                    ? prev.filter((c) => c !== cat)
+                                    : [...prev, cat],
+                                )
+                              }}
+                              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm cursor-pointer hover:bg-zinc-100"
+                            >
+                              <Checkbox checked={selectedCostCategories.includes(cat)} />
+                              {cat}
+                            </button>
+                          ))}
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
                 </div>
-                {selectedPriceProducts.length > 0 && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="mt-2 text-xs text-zinc-500"
-                    onClick={() => setSelectedPriceProducts([])}
-                  >
-                    Limpar seleção
-                  </Button>
-                )}
+
+                <div>
+                  <Label className="mb-2 block">Selecionar Produtos</Label>
+                  <div className="max-h-40 overflow-y-auto border border-zinc-200 rounded-md p-3 space-y-2 bg-zinc-50/50">
+                    {(() => {
+                      const filteredProducts = products.filter((p) => {
+                        if (
+                          priceSearchQuery &&
+                          !p.name.toLowerCase().includes(priceSearchQuery.toLowerCase())
+                        )
+                          return false
+                        if (
+                          selectedCostCategories.length > 0 &&
+                          !selectedCostCategories.includes(p.cost_category || 'CMV')
+                        )
+                          return false
+                        return true
+                      })
+                      if (filteredProducts.length === 0) {
+                        return (
+                          <p className="text-sm text-zinc-500 text-center py-2">
+                            Nenhum produto encontrado com os filtros atuais.
+                          </p>
+                        )
+                      }
+                      return filteredProducts.map((p) => (
+                        <label
+                          key={p.id}
+                          className="flex items-center gap-2 text-sm cursor-pointer hover:text-emerald-700"
+                        >
+                          <Checkbox
+                            checked={selectedPriceProducts.includes(p.id)}
+                            onCheckedChange={(checked) => {
+                              if (checked === true) {
+                                setSelectedPriceProducts((prev) => [...prev, p.id])
+                              } else {
+                                setSelectedPriceProducts((prev) => prev.filter((id) => id !== p.id))
+                              }
+                            }}
+                          />
+                          {p.name}
+                        </label>
+                      ))
+                    })()}
+                  </div>
+                  {selectedPriceProducts.length > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="mt-2 text-xs text-zinc-500"
+                      onClick={() => setSelectedPriceProducts([])}
+                    >
+                      Limpar seleção
+                    </Button>
+                  )}
+                </div>
               </div>
 
               {priceEvolutionData.chartData.length > 0 ? (
