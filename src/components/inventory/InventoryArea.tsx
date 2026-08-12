@@ -6,8 +6,18 @@ import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { submitInventoryCounts, SubmitCountItem } from '@/services/inventory_counts'
 import { Subarea } from '@/services/inventory'
-import { ClipboardCheck, ArrowUpDown, Loader2 } from 'lucide-react'
+import { ClipboardCheck, ArrowUpDown, Loader2, AlertTriangle } from 'lucide-react'
 import { toast } from 'sonner'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
+import { ScrollArea } from '@/components/ui/scroll-area'
 
 interface InventoryAreaProps {
   areaName: string
@@ -33,6 +43,7 @@ export function InventoryArea({
   onSaveOrder,
 }: InventoryAreaProps) {
   const [showSummary, setShowSummary] = useState(false)
+  const [showMissing, setShowMissing] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [localItems, setLocalItems] = useState<CountableItem[]>(items)
   const [isReordering, setIsReordering] = useState(false)
@@ -89,6 +100,7 @@ export function InventoryArea({
   }, [localItems])
 
   const countedItems = localItems.filter((item) => item.actualQty !== null)
+  const missingItems = localItems.filter((item) => item.actualQty === null)
   const totalCount = localItems.length
   const countedCount = countedItems.length
   const allCounted = countedCount === totalCount
@@ -160,6 +172,17 @@ export function InventoryArea({
     }
   }
 
+  const handleFinalizeClick = () => {
+    if (!allCounted) {
+      setShowMissing(true)
+      toast.error(
+        `Há ${missingItems.length} produto(s) sem preenchimento. Preencha ou zere antes de finalizar.`,
+      )
+      return
+    }
+    setShowSummary(true)
+  }
+
   const handleSubmit = async () => {
     setSubmitting(true)
     try {
@@ -219,8 +242,8 @@ export function InventoryArea({
           )}
           <Button
             className="bg-emerald-600 hover:bg-emerald-700"
-            disabled={!allCounted || submitting || isCompleted || isReordering}
-            onClick={() => setShowSummary(true)}
+            disabled={submitting || isCompleted || isReordering}
+            onClick={handleFinalizeClick}
           >
             <ClipboardCheck className="w-4 h-4 mr-2" />
             Finalizar
@@ -259,6 +282,44 @@ export function InventoryArea({
         onConfirm={handleSubmit}
         submitting={submitting}
       />
+
+      <AlertDialog open={showMissing} onOpenChange={setShowMissing}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-500" />
+              Não é possível finalizar a contagem
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div>
+                <p className="mb-2">
+                  Os seguintes produtos precisam ser preenchidos ou zerados antes de finalizar:
+                </p>
+                <ScrollArea className="max-h-[260px] rounded-md border border-zinc-100">
+                  <ul className="p-3 space-y-1">
+                    {missingItems.map((item) => (
+                      <li
+                        key={item.id}
+                        className="text-sm font-medium text-zinc-800 flex justify-between gap-2 py-1 border-b border-zinc-100 last:border-0"
+                      >
+                        <span className="truncate">{item.name}</span>
+                        <span className="text-zinc-400 text-xs whitespace-nowrap">
+                          {item.subareaName}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </ScrollArea>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction className="bg-emerald-600 hover:bg-emerald-700">
+              Entendi
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
