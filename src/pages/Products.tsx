@@ -313,8 +313,10 @@ export default function Products() {
     try {
       await deleteProduct(id)
       toast.success('Produto excluído')
-    } catch (e) {
-      toast.error('Erro ao excluir.')
+      await loadData()
+    } catch (e: any) {
+      const msg = e?.response?.message || e?.message || 'Erro ao excluir produto. Tente novamente.'
+      toast.error(msg)
     }
   }
 

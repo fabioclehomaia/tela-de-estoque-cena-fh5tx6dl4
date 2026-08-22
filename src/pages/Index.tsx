@@ -95,6 +95,8 @@ export default function Index() {
     levels.forEach((level) => {
       const product = level.expand?.product_id || productMap.get(level.product_id)
       if (!product) return
+      // Inactive products are hidden from the counting screen.
+      if (product.active === false) return
       const subarea = level.expand?.subarea_id || subareas.find((s) => s.id === level.subarea_id)
       if (!subarea) return
 
