@@ -39,6 +39,15 @@ export const updateUser = async (
 ) => {
   const payload: Record<string, any> = { ...data }
 
+  // Se a senha estiver vazia (ou undefined), remover password e passwordConfirm para não disparar validação do PocketBase
+  if (
+    !payload.password ||
+    (typeof payload.password === 'string' && payload.password.trim() === '')
+  ) {
+    delete payload.password
+    delete payload.passwordConfirm
+  }
+
   // Se o email não foi fornecido ou for string vazia, remove do payload ou busca o original
   if (
     payload.email === undefined ||
