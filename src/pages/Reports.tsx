@@ -450,7 +450,10 @@ export default function Reports() {
       return true
     })
 
-    const dateMap = new Map<string, { ts: number; display: string } & Record<string, number>>()
+    const dateMap = new Map<
+      string,
+      { ts: number; display: string; [key: string]: string | number }
+    >()
     history.forEach((h) => {
       const product = products.find((p) => p.id === h.product_id)
       if (!product) return

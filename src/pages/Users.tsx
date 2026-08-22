@@ -44,7 +44,7 @@ export default function Users() {
   useEffect(() => {
     loadData()
   }, [])
-  useRealtime<User>('users', () => {
+  useRealtime('users', () => {
     loadData()
   })
 
@@ -263,7 +263,7 @@ export default function Users() {
               </div>
               <div className="flex items-center gap-3 w-full sm:w-auto pt-3 sm:pt-0 border-t sm:border-0 border-zinc-100 mt-2 sm:mt-0">
                 <div className="flex-1 sm:flex-none">
-                  <RoleBadge role={user.role} />
+                  <RoleBadge role={user.role as UserRole} />
                 </div>
                 <div className="text-center px-2 shrink-0">
                   <div className="text-[10px] text-zinc-500 uppercase font-semibold tracking-wider">

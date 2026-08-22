@@ -15,6 +15,8 @@ export interface InventoryCount {
       name: string
       unit: string
       category_id: string
+      image?: string
+      price?: number
     }
     subarea_id: {
       id: string
