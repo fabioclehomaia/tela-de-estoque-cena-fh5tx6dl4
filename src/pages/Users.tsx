@@ -56,20 +56,43 @@ export default function Users() {
   const onSubmit = async (values: UserFormValues, setError: any) => {
     try {
       if (editingUser) {
-        const payload: any = { ...values }
-        if (values.password) {
-          payload.password = values.password
-          payload.passwordConfirm = values.password
-        } else {
-          delete payload.password
+        const payload: any = {
+          name: values.name,
+          email: values.email,
+          phone: values.phone,
+          role: values.role,
+          active: values.active,
+          area_ids: values.area_ids,
+          subarea_ids: values.subarea_ids,
         }
+
+        // Enviar senha SOMENTE se foi informada e preenchida (mínimo 6 dígitos)
+        if (values.password && values.password.trim().length >= 6) {
+          payload.password = values.password.trim()
+          payload.passwordConfirm = (values.passwordConfirm || values.password).trim()
+        }
+
         await updateUser(editingUser.id, payload)
       } else {
-        if (!values.password) {
+        if (!values.password || values.password.trim().length < 6) {
           setError('password', { message: 'Senha obrigatória: 6 dígitos numéricos' })
           return
         }
-        await createUser({ ...values, password: values.password, passwordConfirm: values.password })
+        if (values.password !== values.passwordConfirm) {
+          setError('passwordConfirm', { message: 'As senhas não coincidem' })
+          return
+        }
+        await createUser({
+          name: values.name,
+          email: values.email,
+          phone: values.phone,
+          role: values.role,
+          active: values.active,
+          area_ids: values.area_ids,
+          subarea_ids: values.subarea_ids,
+          password: values.password.trim(),
+          passwordConfirm: values.passwordConfirm?.trim() || values.password.trim(),
+        })
       }
       toast({
         title: 'Alterações salvas com sucesso',

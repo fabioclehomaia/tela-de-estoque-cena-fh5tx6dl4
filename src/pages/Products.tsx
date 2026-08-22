@@ -65,45 +65,31 @@ import pb from '@/lib/pocketbase/client'
 const locationSchema = z.object({
   area_id: z.string().min(1, 'Selecione a área'),
   subarea_id: z.string().min(1, 'Selecione a subárea'),
-  quantity: z
-    .string()
-    .refine((v) => !isNaN(Number(v)) && Number(v) >= 0, 'Inválido')
-    .transform(Number),
+  quantity: z.number().min(0, 'Inválido'),
   existingLevelId: z.string().optional(),
 })
 
 const schema = z
   .object({
     name: z.string().min(1, 'Nome é obrigatório'),
-    unit: z.enum(['kg', 'litro', 'unidade', 'caixa'], { required_error: 'Selecione uma unidade' }),
-    validity_days: z
-      .string()
-      .transform((v) => (v ? Number(v) : null))
-      .optional(),
-    min_stock: z
-      .string()
-      .transform((v) => (v ? Number(v) : null))
-      .optional(),
-    price: z
-      .string()
-      .transform((v) => (v ? Number(v) : null))
-      .optional(),
+    unit: z.enum(['kg', 'litro', 'unidade', 'caixa'] as const),
+    validity_days: z.number().nullable().optional(),
+    min_stock: z.number().nullable().optional(),
+    price: z.number().nullable().optional(),
     category_id: z.string().min(1, 'Selecione a categoria'),
-    cost_category: z
-      .enum([
-        'CMV',
-        'Manutenção predial',
-        'Utensílios',
-        'Alimentação de funcionários',
-        'Limpeza',
-        'Descartáveis',
-        'Decoração',
-        'Operacional',
-      ])
-      .default('CMV'),
-    locations: z.array(locationSchema).optional().default([]),
+    cost_category: z.enum([
+      'CMV',
+      'Manutenção predial',
+      'Utensílios',
+      'Alimentação de funcionários',
+      'Limpeza',
+      'Descartáveis',
+      'Decoração',
+      'Operacional',
+    ] as const),
+    locations: z.array(locationSchema),
     image: z.any().optional(),
-    active: z.boolean().default(true),
+    active: z.boolean(),
   })
   .superRefine((data, ctx) => {
     const ids = data.locations?.map((l) => l.subarea_id) || []
@@ -137,10 +123,10 @@ export default function Products() {
     resolver: zodResolver(schema),
     defaultValues: {
       name: '',
-      unit: undefined,
-      validity_days: undefined as any,
-      min_stock: undefined as any,
-      price: undefined as any,
+      unit: 'unidade',
+      validity_days: null,
+      min_stock: null,
+      price: null,
       category_id: '',
       cost_category: 'CMV',
       locations: [],
@@ -238,10 +224,10 @@ export default function Products() {
       setEditingId(null)
       form.reset({
         name: '',
-        unit: undefined,
-        validity_days: undefined as any,
-        min_stock: undefined as any,
-        price: undefined as any,
+        unit: 'unidade',
+        validity_days: null,
+        min_stock: null,
+        price: null,
         category_id: '',
         cost_category: 'CMV',
         locations: [],
@@ -272,17 +258,17 @@ export default function Products() {
     form.reset({
       name: p.name,
       unit: p.unit,
-      validity_days: p.validity_days?.toString() as any,
-      min_stock: p.min_stock?.toString() as any,
-      price: p.price?.toString() as any,
+      validity_days: p.validity_days ?? null,
+      min_stock: p.min_stock ?? null,
+      price: p.price ?? null,
       category_id: p.category_id,
-      cost_category: p.cost_category || 'CMV',
+      cost_category: (p.cost_category as any) || 'CMV',
       locations: pLevels.map((l) => ({
         area_id: l.expand?.subarea_id?.area_id || '',
         subarea_id: l.subarea_id,
-        quantity: l.quantity.toString() as any,
+        quantity: l.quantity || 0,
         existingLevelId: l.id,
-      })) as any,
+      })),
       image: p.image || null,
       active: p.active ?? true,
     })
@@ -295,10 +281,10 @@ export default function Products() {
       setEditingId(null)
       form.reset({
         name: '',
-        unit: undefined,
-        validity_days: undefined as any,
-        min_stock: undefined as any,
-        price: undefined as any,
+        unit: 'unidade',
+        validity_days: null,
+        min_stock: null,
+        price: null,
         category_id: '',
         cost_category: 'CMV',
         locations: [],
@@ -361,10 +347,10 @@ export default function Products() {
                 setEditingId(null)
                 form.reset({
                   name: '',
-                  unit: undefined,
-                  validity_days: undefined as any,
-                  min_stock: undefined as any,
-                  price: undefined as any,
+                  unit: 'unidade',
+                  validity_days: null,
+                  min_stock: null,
+                  price: null,
                   category_id: '',
                   cost_category: 'CMV',
                   locations: [],
@@ -455,7 +441,14 @@ export default function Products() {
                       <FormItem>
                         <FormLabel>Validade (dias)</FormLabel>
                         <FormControl>
-                          <Input type="number" {...field} value={field.value ?? ''} />
+                          <Input
+                            type="number"
+                            {...field}
+                            value={field.value ?? ''}
+                            onChange={(e) =>
+                              field.onChange(e.target.value === '' ? null : Number(e.target.value))
+                            }
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -468,7 +461,14 @@ export default function Products() {
                       <FormItem>
                         <FormLabel>Estoque Min</FormLabel>
                         <FormControl>
-                          <Input type="number" {...field} value={field.value ?? ''} />
+                          <Input
+                            type="number"
+                            {...field}
+                            value={field.value ?? ''}
+                            onChange={(e) =>
+                              field.onChange(e.target.value === '' ? null : Number(e.target.value))
+                            }
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -489,6 +489,9 @@ export default function Products() {
                           placeholder="0,00"
                           {...field}
                           value={field.value ?? ''}
+                          onChange={(e) =>
+                            field.onChange(e.target.value === '' ? null : Number(e.target.value))
+                          }
                         />
                       </FormControl>
                       <FormMessage />
@@ -577,7 +580,7 @@ export default function Products() {
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={() => append({ area_id: '', subarea_id: '', quantity: '0' as any })}
+                      onClick={() => append({ area_id: '', subarea_id: '', quantity: 0 })}
                       className="h-8 text-xs border-emerald-200 text-emerald-700 hover:bg-emerald-50"
                     >
                       <Plus className="w-3 h-3 mr-1" />
@@ -678,6 +681,12 @@ export default function Products() {
                                       placeholder="Qtd"
                                       className="bg-white h-9"
                                       {...qField}
+                                      value={qField.value ?? ''}
+                                      onChange={(e) =>
+                                        qField.onChange(
+                                          e.target.value === '' ? 0 : Number(e.target.value),
+                                        )
+                                      }
                                     />
                                   </FormControl>
                                   <FormMessage />

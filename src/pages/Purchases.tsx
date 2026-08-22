@@ -38,14 +38,8 @@ import {
 const schema = z.object({
   product_id: z.string().min(1, 'Selecione um produto'),
   supplier_id: z.string().min(1, 'Selecione um fornecedor'),
-  quantity: z
-    .string()
-    .refine((v) => !isNaN(Number(v)) && Number(v) > 0, 'Inválido')
-    .transform(Number),
-  price: z
-    .string()
-    .refine((v) => !isNaN(Number(v)) && Number(v) >= 0, 'Inválido')
-    .transform(Number),
+  quantity: z.number().min(0.0001, 'Inválido'),
+  price: z.number().min(0, 'Inválido'),
   nota_fiscal: z.string().optional(),
   payment_term: z.string().optional(),
   date: z.string().min(1, 'Data é obrigatória'),
@@ -57,8 +51,8 @@ const formatCurrency = (v: number) =>
 const defaultValues = {
   product_id: '',
   supplier_id: '',
-  quantity: '',
-  price: '',
+  quantity: 0,
+  price: 0,
   nota_fiscal: '',
   payment_term: '',
   date: format(new Date(), 'yyyy-MM-dd'),
@@ -111,8 +105,8 @@ export default function Purchases() {
     form.reset({
       product_id: c.product_id,
       supplier_id: c.supplier_id,
-      quantity: c.quantity.toString(),
-      price: c.price.toString(),
+      quantity: c.quantity || 0,
+      price: c.price || 0,
       nota_fiscal: c.nota_fiscal || '',
       payment_term: c.payment_term || '',
       date: c.date ? c.date.split(' ')[0] : format(new Date(), 'yyyy-MM-dd'),
@@ -216,7 +210,15 @@ export default function Purchases() {
                       <FormItem>
                         <FormLabel>Quantidade</FormLabel>
                         <FormControl>
-                          <Input type="number" step="any" {...field} />
+                          <Input
+                            type="number"
+                            step="any"
+                            {...field}
+                            value={field.value ?? ''}
+                            onChange={(e) =>
+                              field.onChange(e.target.value === '' ? 0 : Number(e.target.value))
+                            }
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -229,7 +231,15 @@ export default function Purchases() {
                       <FormItem>
                         <FormLabel>Preço Unitário (R$)</FormLabel>
                         <FormControl>
-                          <Input type="number" step="any" {...field} />
+                          <Input
+                            type="number"
+                            step="any"
+                            {...field}
+                            value={field.value ?? ''}
+                            onChange={(e) =>
+                              field.onChange(e.target.value === '' ? 0 : Number(e.target.value))
+                            }
+                          />
                         </FormControl>
                         <FormMessage />
                       </FormItem>

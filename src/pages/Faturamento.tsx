@@ -9,7 +9,7 @@ import {
   createFaturamento,
   updateFaturamento,
   deleteFaturamento,
-  Faturamento,
+  type Faturamento as FaturamentoType,
 } from '@/services/faturamento'
 import { useRealtime } from '@/hooks/use-realtime'
 import { extractFieldErrors } from '@/lib/pocketbase/errors'
@@ -36,24 +36,21 @@ import { PeriodSelector, PeriodRange } from '@/components/shared/PeriodSelector'
 const schema = z.object({
   period_start: z.string().min(1, 'Data inicial obrigatória'),
   period_end: z.string().min(1, 'Data final obrigatória'),
-  value: z
-    .string()
-    .refine((v) => !isNaN(Number(v)) && Number(v) >= 0, 'Inválido')
-    .transform(Number),
+  value: z.number().min(0, 'Valor inválido'),
 })
 
 const formatCurrency = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
 
 export default function Faturamento() {
-  const [records, setRecords] = useState<Faturamento[]>([])
+  const [records, setRecords] = useState<FaturamentoType[]>([])
   const [isOpen, setIsOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [period, setPeriod] = useState<PeriodRange>({ start: '', end: '' })
 
   const form = useForm<z.infer<typeof schema>>({
     resolver: zodResolver(schema),
-    defaultValues: { period_start: '', period_end: '', value: '' },
+    defaultValues: { period_start: '', period_end: '', value: 0 },
   })
 
   const loadData = async () => setRecords(await getFaturamentos())
@@ -81,12 +78,12 @@ export default function Faturamento() {
     }
   }
 
-  const handleEdit = (f: Faturamento) => {
+  const handleEdit = (f: FaturamentoType) => {
     setEditingId(f.id)
     form.reset({
       period_start: f.period_start ? f.period_start.split(' ')[0] : '',
       period_end: f.period_end ? f.period_end.split(' ')[0] : '',
-      value: f.value.toString(),
+      value: f.value || 0,
     })
     setIsOpen(true)
   }
@@ -95,7 +92,7 @@ export default function Faturamento() {
     setIsOpen(open)
     if (!open) {
       setEditingId(null)
-      form.reset({ period_start: '', period_end: '', value: '' })
+      form.reset({ period_start: '', period_end: '', value: 0 })
     }
   }
 
@@ -119,7 +116,7 @@ export default function Faturamento() {
               className="bg-emerald-600 hover:bg-emerald-700"
               onClick={() => {
                 setEditingId(null)
-                form.reset({ period_start: period.start, period_end: period.end, value: '' })
+                form.reset({ period_start: period.start, period_end: period.end, value: 0 })
               }}
             >
               <Plus className="w-4 h-4 mr-2" /> Novo Faturamento
@@ -164,7 +161,15 @@ export default function Faturamento() {
                     <FormItem>
                       <FormLabel>Valor do Faturamento (R$)</FormLabel>
                       <FormControl>
-                        <Input type="number" step="any" placeholder="0,00" {...field} />
+                        <Input
+                          type="number"
+                          step="any"
+                          placeholder="0,00"
+                          {...field}
+                          onChange={(e) =>
+                            field.onChange(e.target.value === '' ? 0 : Number(e.target.value))
+                          }
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

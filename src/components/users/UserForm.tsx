@@ -1,7 +1,8 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
+import { KeyRound, CheckCircle2, Lock, Unlock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Form,
@@ -29,17 +30,14 @@ import { CurrentPermissions } from '@/components/users/CurrentPermissions'
 const userSchema = z
   .object({
     name: z.string().min(2, 'Mínimo 2 caracteres'),
-    email: z.string().email('E-mail inválido'),
+    email: z.string().min(1, 'E-mail é obrigatório').email('E-mail inválido'),
     phone: z.string().optional(),
     role: z.enum(['admin', 'manager', 'employee'] as const),
-    active: z.boolean().default(true),
-    area_ids: z.array(z.string()).default([]),
-    subarea_ids: z.array(z.string()).default([]),
-    password: z
-      .string()
-      .regex(/^\d{6}$/, 'A senha deve conter exatamente 6 dígitos numéricos')
-      .optional()
-      .or(z.literal('')),
+    active: z.boolean(),
+    area_ids: z.array(z.string()),
+    subarea_ids: z.array(z.string()),
+    password: z.string().optional(),
+    passwordConfirm: z.string().optional(),
   })
   .superRefine((data, ctx) => {
     if (data.role !== 'admin') {
@@ -49,6 +47,34 @@ const userSchema = z
         ctx.addIssue({
           path: ['area_ids'],
           message: 'É necessário selecionar ao menos uma área ou subárea para salvar.',
+          code: z.ZodIssueCode.custom,
+        })
+      }
+    }
+
+    const pwd = data.password ? data.password.trim() : ''
+    const confirm = data.passwordConfirm ? data.passwordConfirm.trim() : ''
+
+    // Se informou senha ou confirmação
+    if (pwd.length > 0 || confirm.length > 0) {
+      if (!/^\d{6}$/.test(pwd)) {
+        ctx.addIssue({
+          path: ['password'],
+          message: 'A senha deve conter exatamente 6 dígitos numéricos',
+          code: z.ZodIssueCode.custom,
+        })
+      }
+      if (!/^\d{6}$/.test(confirm)) {
+        ctx.addIssue({
+          path: ['passwordConfirm'],
+          message: 'A confirmação deve conter exatamente 6 dígitos numéricos',
+          code: z.ZodIssueCode.custom,
+        })
+      }
+      if (pwd !== confirm) {
+        ctx.addIssue({
+          path: ['passwordConfirm'],
+          message: 'As senhas não coincidem. Digite o mesmo código de 6 dígitos.',
           code: z.ZodIssueCode.custom,
         })
       }
@@ -74,6 +100,9 @@ const getIdsArray = (fieldValue: any): string[] => {
 }
 
 export function UserForm({ initialData, areas = [], subareas = [], onSubmit }: UserFormProps) {
+  const isEditing = !!initialData
+  const [isPasswordResetEnabled, setIsPasswordResetEnabled] = useState(!isEditing)
+
   const form = useForm<UserFormValues>({
     resolver: zodResolver(userSchema),
     defaultValues: {
@@ -92,10 +121,12 @@ export function UserForm({ initialData, areas = [], subareas = [], onSubmit }: U
         ]),
       ],
       password: '',
+      passwordConfirm: '',
     },
   })
 
   useEffect(() => {
+    setIsPasswordResetEnabled(!initialData)
     form.reset({
       name: initialData?.name || '',
       email: initialData?.email || '',
@@ -112,11 +143,31 @@ export function UserForm({ initialData, areas = [], subareas = [], onSubmit }: U
         ]),
       ],
       password: '',
+      passwordConfirm: '',
     })
   }, [initialData, form])
 
+  const handleTogglePasswordReset = () => {
+    if (isPasswordResetEnabled) {
+      // Cancelar reset: desabilita e limpa campos
+      setIsPasswordResetEnabled(false)
+      form.setValue('password', '', { shouldValidate: true })
+      form.setValue('passwordConfirm', '', { shouldValidate: true })
+      form.clearErrors(['password', 'passwordConfirm'])
+    } else {
+      // Habilitar reset
+      setIsPasswordResetEnabled(true)
+    }
+  }
+
   const handleSubmit = async (values: UserFormValues) => {
+    // Se estiver em edição e o reset de senha não tiver sido acionado, garantir que campos de senha fiquem vazios
     const payload = { ...values }
+    if (isEditing && !isPasswordResetEnabled) {
+      payload.password = ''
+      payload.passwordConfirm = ''
+    }
+
     if (payload.role === 'admin') {
       payload.area_ids = []
       payload.subarea_ids = []
@@ -129,9 +180,16 @@ export function UserForm({ initialData, areas = [], subareas = [], onSubmit }: U
     await onSubmit(payload, form.setError)
   }
 
+  const passwordVal = form.watch('password') || ''
+  const passwordConfirmVal = form.watch('passwordConfirm') || ''
+  const passwordsMatch =
+    passwordVal.length === 6 &&
+    passwordConfirmVal.length === 6 &&
+    passwordVal === passwordConfirmVal
+
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4 pt-4">
+      <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4 pt-2">
         <FormField
           control={form.control}
           name="name"
@@ -152,7 +210,7 @@ export function UserForm({ initialData, areas = [], subareas = [], onSubmit }: U
             name="email"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>E-mail</FormLabel>
+                <FormLabel>E-mail / Login</FormLabel>
                 <FormControl>
                   <Input type="email" placeholder="joao@exemplo.com" {...field} />
                 </FormControl>
@@ -187,7 +245,7 @@ export function UserForm({ initialData, areas = [], subareas = [], onSubmit }: U
                     field.onChange(v)
                     form.trigger(['area_ids', 'subarea_ids'])
                   }}
-                  defaultValue={field.value}
+                  value={field.value}
                 >
                   <FormControl>
                     <SelectTrigger>
@@ -277,8 +335,6 @@ export function UserForm({ initialData, areas = [], subareas = [], onSubmit }: U
                   const isAreaSelected = form.watch('area_ids')?.includes(area.id) || false
                   const selectedSubs =
                     form.watch('subarea_ids')?.filter((id) => subs.some((s) => s.id === id)) || []
-                  const allSelected =
-                    isAreaSelected && selectedSubs.length === subs.length && subs.length > 0
 
                   return (
                     <div
@@ -418,29 +474,100 @@ export function UserForm({ initialData, areas = [], subareas = [], onSubmit }: U
           )}
         </div>
 
-        <FormField
-          control={form.control}
-          name="password"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>{initialData ? 'Nova Senha (6 dígitos)' : 'Senha (6 dígitos)'}</FormLabel>
-              <FormControl>
-                <PasswordInput
-                  value={field.value || ''}
-                  onChange={field.onChange}
-                  placeholder="000000"
-                  hasExistingPassword={!!initialData}
-                />
-              </FormControl>
-              {initialData && (
-                <p className="text-xs text-zinc-500">
-                  A senha atual está protegida. Digite uma nova senha de 6 dígitos para alterá-la.
-                </p>
+        {/* Bloco de Senha / Reset de Senha */}
+        <div className="border border-zinc-200 rounded-lg p-4 bg-zinc-50/70 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2">
+                <KeyRound className="w-4 h-4 text-zinc-700" />
+                <span className="font-semibold text-sm text-zinc-900">
+                  {isEditing ? 'Senha de Acesso' : 'Definir Senha de Acesso'}
+                </span>
+              </div>
+              <p className="text-xs text-zinc-500">
+                {isEditing
+                  ? 'A senha atual está protegida. Clique no botão ao lado para redefinir.'
+                  : 'Digite uma senha numérica de 6 dígitos para o novo usuário.'}
+              </p>
+            </div>
+
+            {isEditing && (
+              <Button
+                type="button"
+                variant={isPasswordResetEnabled ? 'secondary' : 'outline'}
+                size="sm"
+                onClick={handleTogglePasswordReset}
+                className={cn(
+                  'text-xs font-medium shrink-0',
+                  isPasswordResetEnabled
+                    ? 'border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100'
+                    : 'border-zinc-300 text-zinc-700 hover:bg-zinc-100',
+                )}
+              >
+                {isPasswordResetEnabled ? (
+                  <>
+                    <Unlock className="w-3.5 h-3.5 mr-1.5 text-amber-700" /> Cancelar Reset
+                  </>
+                ) : (
+                  <>
+                    <Lock className="w-3.5 h-3.5 mr-1.5 text-zinc-600" /> Resetar Senha
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+            <FormField
+              control={form.control}
+              name="password"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className={cn(!isPasswordResetEnabled && 'text-zinc-400')}>
+                    {isEditing ? 'Nova Senha (6 dígitos)' : 'Senha (6 dígitos)'}
+                  </FormLabel>
+                  <FormControl>
+                    <PasswordInput
+                      value={field.value || ''}
+                      onChange={field.onChange}
+                      disabled={!isPasswordResetEnabled}
+                      placeholder={isPasswordResetEnabled ? '000000' : '•••••• (desabilitado)'}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
               )}
-              <FormMessage />
-            </FormItem>
+            />
+
+            <FormField
+              control={form.control}
+              name="passwordConfirm"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className={cn(!isPasswordResetEnabled && 'text-zinc-400')}>
+                    {isEditing ? 'Confirmar Nova Senha' : 'Confirmar Senha'}
+                  </FormLabel>
+                  <FormControl>
+                    <PasswordInput
+                      value={field.value || ''}
+                      onChange={field.onChange}
+                      disabled={!isPasswordResetEnabled}
+                      placeholder={isPasswordResetEnabled ? '000000' : '•••••• (desabilitado)'}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          </div>
+
+          {isPasswordResetEnabled && passwordsMatch && (
+            <div className="flex items-center gap-1.5 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded p-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>As duas senhas coincidem e estão prontas para serem salvas.</span>
+            </div>
           )}
-        />
+        </div>
 
         {initialData && (
           <FormField

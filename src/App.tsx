@@ -20,7 +20,7 @@ import { AuthProvider } from './hooks/use-auth'
 import { ProtectedRoute } from './components/ProtectedRoute'
 
 const App = () => (
-  <BrowserRouter future={{ v7_startTransition: false, v7_relativeSplatPath: false }}>
+  <BrowserRouter>
     <AuthProvider>
       <TooltipProvider>
         <Toaster />
