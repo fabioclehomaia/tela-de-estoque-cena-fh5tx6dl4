@@ -37,29 +37,28 @@ export const updateUser = async (
   id: string,
   data: Partial<User> & { password?: string; passwordConfirm?: string; emailVisibility?: boolean },
 ) => {
-  const payload: Record<string, any> = { ...data }
+  const payload: Record<string, any> = {}
 
-  // Se a senha estiver vazia (ou undefined), remover password e passwordConfirm para não disparar validação do PocketBase
-  if (
-    !payload.password ||
-    (typeof payload.password === 'string' && payload.password.trim() === '')
-  ) {
-    delete payload.password
-    delete payload.passwordConfirm
+  // Copiar apenas campos válidos
+  if (data.name !== undefined) payload.name = data.name.trim()
+  if (data.email !== undefined && data.email.trim() !== '') {
+    payload.email = data.email.trim().toLowerCase()
   }
+  if (data.phone !== undefined) payload.phone = data.phone.trim()
+  if (data.role !== undefined) payload.role = data.role
+  if (data.active !== undefined) payload.active = !!data.active
+  if (data.area_ids !== undefined) payload.area_ids = data.area_ids
+  if (data.subarea_ids !== undefined) payload.subarea_ids = data.subarea_ids
+  if (data.avatar !== undefined) payload.avatar = data.avatar
 
-  // Se o email não foi fornecido ou for string vazia, remove do payload ou busca o original
-  if (
-    payload.email === undefined ||
-    (typeof payload.email === 'string' && payload.email.trim() === '')
-  ) {
-    delete payload.email
+  // Se a senha foi informada com pelo menos 6 dígitos numéricos
+  if (typeof data.password === 'string' && data.password.trim().length >= 6) {
+    payload.password = data.password.trim()
+    payload.passwordConfirm = (data.passwordConfirm || data.password).trim()
   }
 
   // Garantir que emailVisibility permaneça true
-  if (payload.emailVisibility === undefined) {
-    payload.emailVisibility = true
-  }
+  payload.emailVisibility = true
 
   return pb.collection('users').update<User>(id, payload)
 }

@@ -128,9 +128,9 @@ export function UserForm({ initialData, areas = [], subareas = [], onSubmit }: U
   useEffect(() => {
     setIsPasswordResetEnabled(!initialData)
     form.reset({
-      name: initialData?.name || '',
-      email: initialData?.email || '',
-      phone: initialData?.phone || '',
+      name: initialData?.name ?? '',
+      email: initialData?.email ?? '',
+      phone: initialData?.phone ?? '',
       role: (initialData?.role as any) || 'employee',
       active: initialData ? initialData.active : true,
       area_ids: [

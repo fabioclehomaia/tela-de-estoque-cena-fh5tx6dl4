@@ -73,6 +73,13 @@ export default function Users() {
         }
 
         await updateUser(editingUser.id, payload)
+        toast({
+          title: 'Usuário atualizado com sucesso!',
+          description: payload.password
+            ? 'Dados e senha foram alterados com sucesso.'
+            : 'Dados cadastrais salvos com sucesso.',
+          className: 'bg-emerald-800 text-white border-none',
+        })
       } else {
         if (!values.password || values.password.trim().length < 6) {
           setError('password', { message: 'Senha obrigatória: 6 dígitos numéricos' })
@@ -83,9 +90,9 @@ export default function Users() {
           return
         }
         await createUser({
-          name: values.name,
-          email: values.email,
-          phone: values.phone,
+          name: values.name.trim(),
+          email: values.email.trim().toLowerCase(),
+          phone: values.phone?.trim() || '',
           role: values.role,
           active: values.active,
           area_ids: values.area_ids,
@@ -93,18 +100,29 @@ export default function Users() {
           password: values.password.trim(),
           passwordConfirm: values.passwordConfirm?.trim() || values.password.trim(),
         })
+        toast({
+          title: 'Usuário cadastrado com sucesso!',
+          className: 'bg-emerald-800 text-white border-none',
+        })
       }
-      toast({
-        title: 'Alterações salvas com sucesso',
-        className: 'bg-emerald-800 text-white border-none',
-      })
       setIsDialogOpen(false)
-    } catch (err) {
+      setEditingUser(null)
+      await loadData()
+    } catch (err: any) {
       const errors = extractFieldErrors(err)
       if (Object.keys(errors).length > 0) {
         Object.entries(errors).forEach(([f, m]) => setError(f, { message: m }))
+        toast({
+          variant: 'destructive',
+          title: 'Erro ao validar formulário',
+          description: 'Por favor, revise os campos destacados.',
+        })
       } else {
-        toast({ variant: 'destructive', title: 'Erro ao salvar' })
+        toast({
+          variant: 'destructive',
+          title: 'Erro ao salvar usuário',
+          description: err?.message || 'Ocorreu um erro ao tentar salvar os dados.',
+        })
       }
     }
   }
