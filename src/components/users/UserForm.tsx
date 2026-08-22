@@ -2,8 +2,19 @@ import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import * as z from 'zod'
-import { KeyRound, CheckCircle2, Lock, Unlock } from 'lucide-react'
+import { KeyRound, CheckCircle2, Lock, Unlock, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import {
   Form,
   FormControl,
@@ -88,6 +99,9 @@ interface UserFormProps {
   areas?: { id: string; name: string }[]
   subareas?: { id: string; name: string; area_id: string }[]
   onSubmit: (values: UserFormValues, setError: any) => Promise<void>
+  onDelete?: () => Promise<void>
+  isCurrentUser?: boolean
+  isDeleting?: boolean
 }
 
 const getIdsArray = (fieldValue: any): string[] => {
@@ -99,9 +113,18 @@ const getIdsArray = (fieldValue: any): string[] => {
   return []
 }
 
-export function UserForm({ initialData, areas = [], subareas = [], onSubmit }: UserFormProps) {
+export function UserForm({
+  initialData,
+  areas = [],
+  subareas = [],
+  onSubmit,
+  onDelete,
+  isCurrentUser = false,
+  isDeleting = false,
+}: UserFormProps) {
   const isEditing = !!initialData
   const [isPasswordResetEnabled, setIsPasswordResetEnabled] = useState(!isEditing)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   const form = useForm<UserFormValues>({
     resolver: zodResolver(userSchema),
@@ -589,11 +612,72 @@ export function UserForm({ initialData, areas = [], subareas = [], onSubmit }: U
           />
         )}
 
-        <div className="flex justify-end pt-4">
+        <div className="flex flex-col-reverse sm:flex-row items-center justify-between gap-3 pt-4 border-t border-zinc-200 mt-6">
+          {isEditing && onDelete ? (
+            <div>
+              {isCurrentUser ? (
+                <p className="text-xs text-zinc-400 italic">
+                  Você não pode excluir sua própria conta.
+                </p>
+              ) : (
+                <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      className="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white flex items-center gap-2 text-xs font-semibold"
+                      disabled={form.formState.isSubmitting || isDeleting}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      {isDeleting ? 'Excluindo...' : 'Excluir Usuário'}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle className="text-red-600 flex items-center gap-2">
+                        <Trash2 className="w-5 h-5" />
+                        Confirmar exclusão de usuário
+                      </AlertDialogTitle>
+                      <AlertDialogDescription className="text-zinc-600 text-sm space-y-2">
+                        <span>
+                          Tem certeza de que deseja excluir o usuário{' '}
+                          <strong className="text-zinc-900 font-semibold">
+                            {initialData?.name} ({initialData?.email})
+                          </strong>
+                          ?
+                        </span>
+                        <span className="block mt-2 text-xs text-amber-700 bg-amber-50 p-2.5 rounded border border-amber-200">
+                          <strong>Atenção:</strong> Esta ação é irreversível. Todos os vínculos e
+                          registros de contagem vinculados a este usuário serão removidos.
+                        </span>
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={async (e) => {
+                          e.preventDefault()
+                          setShowDeleteConfirm(false)
+                          await onDelete()
+                        }}
+                        disabled={isDeleting}
+                        className="bg-red-600 hover:bg-red-700 text-white font-medium"
+                      >
+                        {isDeleting ? 'Excluindo...' : 'Sim, excluir usuário'}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
+            </div>
+          ) : (
+            <div />
+          )}
+
           <Button
             type="submit"
-            className="w-full sm:w-auto bg-emerald-800 hover:bg-emerald-900"
-            disabled={form.formState.isSubmitting}
+            className="w-full sm:w-auto bg-emerald-800 hover:bg-emerald-900 ml-auto"
+            disabled={form.formState.isSubmitting || isDeleting}
           >
             {form.formState.isSubmitting ? 'Salvando...' : 'Salvar Usuário'}
           </Button>

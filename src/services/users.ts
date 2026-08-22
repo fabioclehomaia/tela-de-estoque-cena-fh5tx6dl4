@@ -62,3 +62,7 @@ export const updateUser = async (
 
   return pb.collection('users').update<User>(id, payload)
 }
+
+export const deleteUser = async (id: string) => {
+  return pb.collection('users').delete(id)
+}

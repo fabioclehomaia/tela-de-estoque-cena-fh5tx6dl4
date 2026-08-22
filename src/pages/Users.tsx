@@ -6,20 +6,22 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useToast } from '@/hooks/use-toast'
 import { extractFieldErrors } from '@/lib/pocketbase/errors'
-import { getUsers, createUser, updateUser, User } from '@/services/users'
-import { UserRole } from '@/hooks/use-auth'
+import { getUsers, createUser, updateUser, deleteUser, User } from '@/services/users'
+import { useAuth, UserRole } from '@/hooks/use-auth'
 import { useRealtime } from '@/hooks/use-realtime'
 import { cn } from '@/lib/utils'
 import { UserForm, UserFormValues } from '@/components/users/UserForm'
 import pb from '@/lib/pocketbase/client'
 
 export default function Users() {
+  const { user: currentUser } = useAuth()
   const [users, setUsers] = useState<User[]>([])
   const [areas, setAreas] = useState<{ id: string; name: string }[]>([])
   const [subareas, setSubareas] = useState<{ id: string; name: string; area_id: string }[]>([])
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [editingUser, setEditingUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  const [isDeleting, setIsDeleting] = useState(false)
   const { toast } = useToast()
 
   const loadData = async () => {
@@ -51,6 +53,40 @@ export default function Users() {
   const openDialog = (user?: User) => {
     setEditingUser(user || null)
     setIsDialogOpen(true)
+  }
+
+  const handleDeleteUser = async () => {
+    if (!editingUser) return
+
+    if (currentUser?.id === editingUser.id) {
+      toast({
+        variant: 'destructive',
+        title: 'Operação não permitida',
+        description: 'Você não pode excluir sua própria conta.',
+      })
+      return
+    }
+
+    try {
+      setIsDeleting(true)
+      await deleteUser(editingUser.id)
+      toast({
+        title: 'Usuário excluído com sucesso!',
+        description: `O usuário ${editingUser.name} e seus vínculos foram removidos.`,
+        className: 'bg-emerald-800 text-white border-none',
+      })
+      setIsDialogOpen(false)
+      setEditingUser(null)
+      await loadData()
+    } catch (err: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao excluir usuário',
+        description: err?.message || 'Ocorreu um erro ao tentar excluir o usuário.',
+      })
+    } finally {
+      setIsDeleting(false)
+    }
   }
 
   const onSubmit = async (values: UserFormValues, setError: any) => {
@@ -180,6 +216,9 @@ export default function Users() {
               areas={areas}
               subareas={subareas}
               onSubmit={onSubmit}
+              onDelete={editingUser ? handleDeleteUser : undefined}
+              isCurrentUser={currentUser?.id === editingUser?.id}
+              isDeleting={isDeleting}
             />
           )}
         </DialogContent>
