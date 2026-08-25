@@ -51,10 +51,13 @@ export const updateUser = async (
   if (data.subarea_ids !== undefined) payload.subarea_ids = data.subarea_ids
   if (data.avatar !== undefined) payload.avatar = data.avatar
 
-  // Se a senha foi informada com pelo menos 6 dígitos numéricos
-  if (typeof data.password === 'string' && data.password.trim().length >= 6) {
-    payload.password = data.password.trim()
-    payload.passwordConfirm = (data.passwordConfirm || data.password).trim()
+  // SÓ incluir password e passwordConfirm se a senha for uma string não-vazia com 6+ caracteres
+  const pwd = typeof data.password === 'string' ? data.password.trim() : ''
+  const pwdConfirm = typeof data.passwordConfirm === 'string' ? data.passwordConfirm.trim() : ''
+
+  if (pwd.length >= 6) {
+    payload.password = pwd
+    payload.passwordConfirm = pwdConfirm || pwd
   }
 
   // Garantir que emailVisibility permaneça true

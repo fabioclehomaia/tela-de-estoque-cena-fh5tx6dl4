@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Card, CardContent } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useToast } from '@/hooks/use-toast'
-import { extractFieldErrors } from '@/lib/pocketbase/errors'
+import { extractFieldErrors, getErrorMessage } from '@/lib/pocketbase/errors'
 import { getUsers, createUser, updateUser, deleteUser, User } from '@/services/users'
 import { useAuth, UserRole } from '@/hooks/use-auth'
 import { useRealtime } from '@/hooks/use-realtime'
@@ -146,18 +146,41 @@ export default function Users() {
       await loadData()
     } catch (err: any) {
       const errors = extractFieldErrors(err)
-      if (Object.keys(errors).length > 0) {
-        Object.entries(errors).forEach(([f, m]) => setError(f, { message: m }))
+      const allowedFormFields = new Set([
+        'name',
+        'email',
+        'phone',
+        'role',
+        'active',
+        'area_ids',
+        'subarea_ids',
+        'password',
+        'passwordConfirm',
+      ])
+
+      const formFieldErrors: Record<string, string> = {}
+      for (const [field, message] of Object.entries(errors)) {
+        if (allowedFormFields.has(field)) {
+          formFieldErrors[field] = message
+        }
+      }
+
+      const highlightedFieldCount = Object.keys(formFieldErrors).length
+
+      if (highlightedFieldCount > 0) {
+        Object.entries(formFieldErrors).forEach(([f, m]) => setError(f as any, { message: m }))
         toast({
           variant: 'destructive',
           title: 'Erro ao validar formulário',
           description: 'Por favor, revise os campos destacados.',
         })
       } else {
+        // Se nenhum campo individual do formulário for mapeável, exibir a mensagem real do erro
+        const errorMessage = getErrorMessage(err)
         toast({
           variant: 'destructive',
           title: 'Erro ao salvar usuário',
-          description: err?.message || 'Ocorreu um erro ao tentar salvar os dados.',
+          description: errorMessage || 'Ocorreu um erro ao tentar salvar os dados.',
         })
       }
     }

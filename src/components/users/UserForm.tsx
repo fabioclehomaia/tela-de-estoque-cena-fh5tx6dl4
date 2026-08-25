@@ -82,7 +82,7 @@ const userSchema = z
           code: z.ZodIssueCode.custom,
         })
       }
-      if (pwd !== confirm) {
+      if (pwd.length > 0 && confirm.length > 0 && pwd !== confirm) {
         ctx.addIssue({
           path: ['passwordConfirm'],
           message: 'As senhas não coincidem. Digite o mesmo código de 6 dígitos.',
