@@ -145,6 +145,7 @@ export default function Users() {
       setEditingUser(null)
       await loadData()
     } catch (err: any) {
+      console.error('Erro ao salvar usuário:', err)
       const errors = extractFieldErrors(err)
       const allowedFormFields = new Set([
         'name',
@@ -159,9 +160,13 @@ export default function Users() {
       ])
 
       const formFieldErrors: Record<string, string> = {}
+      const unmappedErrors: string[] = []
+
       for (const [field, message] of Object.entries(errors)) {
         if (allowedFormFields.has(field)) {
           formFieldErrors[field] = message
+        } else {
+          unmappedErrors.push(`${field}: ${message}`)
         }
       }
 
@@ -174,8 +179,13 @@ export default function Users() {
           title: 'Erro ao validar formulário',
           description: 'Por favor, revise os campos destacados.',
         })
+      } else if (unmappedErrors.length > 0) {
+        toast({
+          variant: 'destructive',
+          title: 'Erro de validação',
+          description: unmappedErrors.join(', '),
+        })
       } else {
-        // Se nenhum campo individual do formulário for mapeável, exibir a mensagem real do erro
         const errorMessage = getErrorMessage(err)
         toast({
           variant: 'destructive',

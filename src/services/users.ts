@@ -60,9 +60,6 @@ export const updateUser = async (
     payload.passwordConfirm = pwdConfirm || pwd
   }
 
-  // Garantir que emailVisibility permaneça true
-  payload.emailVisibility = true
-
   return pb.collection('users').update<User>(id, payload)
 }
 
