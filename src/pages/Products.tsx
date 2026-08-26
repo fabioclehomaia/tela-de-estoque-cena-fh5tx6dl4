@@ -65,7 +65,15 @@ import pb from '@/lib/pocketbase/client'
 const locationSchema = z.object({
   area_id: z.string().min(1, 'Selecione a área'),
   subarea_id: z.string().min(1, 'Selecione a subárea'),
-  quantity: z.number().min(0, 'Quantidade inválida').nullable().optional(),
+  quantity: z
+    .union([
+      z.number().min(0, 'Quantidade não pode ser negativa'),
+      z.nan(),
+      z.null(),
+      z.undefined(),
+    ])
+    .optional()
+    .transform((val) => (val === null || val === undefined || Number.isNaN(val) ? 0 : val)),
   existingLevelId: z.string().optional(),
 })
 
@@ -267,7 +275,7 @@ export default function Products() {
       locations: pLevels.map((l) => ({
         area_id: l.expand?.subarea_id?.area_id || '',
         subarea_id: l.subarea_id,
-        quantity: l.quantity || 0,
+        quantity: l.quantity ?? 0,
         existingLevelId: l.id,
       })),
       image: p.image || null,
@@ -683,7 +691,13 @@ export default function Products() {
                                       placeholder="0 (opcional)"
                                       className="bg-white h-9 text-right"
                                       {...qField}
-                                      value={qField.value ?? ''}
+                                      value={
+                                        qField.value === null ||
+                                        qField.value === undefined ||
+                                        Number.isNaN(qField.value)
+                                          ? ''
+                                          : qField.value
+                                      }
                                       onChange={(e) => {
                                         const val = e.target.value
                                         qField.onChange(val === '' ? null : Number(val))
@@ -697,7 +711,7 @@ export default function Products() {
                           </div>
                           <div className="flex-1 text-xs text-zinc-500 font-medium pt-1">
                             {form.watch('unit') || 'Unidades'}
-                          </div>
+                          </div>{' '}
                           <Button
                             type="button"
                             variant="ghost"
