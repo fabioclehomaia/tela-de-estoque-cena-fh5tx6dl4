@@ -65,7 +65,7 @@ import pb from '@/lib/pocketbase/client'
 const locationSchema = z.object({
   area_id: z.string().min(1, 'Selecione a área'),
   subarea_id: z.string().min(1, 'Selecione a subárea'),
-  quantity: z.number().min(0, 'Inválido'),
+  quantity: z.number().min(0, 'Quantidade inválida').nullable().optional(),
   existingLevelId: z.string().optional(),
 })
 
@@ -202,19 +202,20 @@ export default function Products() {
         }
 
         for (const loc of newLocs) {
+          const locQty = loc.quantity ?? 0
           if (loc.existingLevelId) {
             const el = existingLevels.find((e) => e.id === loc.existingLevelId)
-            if (el && (el.subarea_id !== loc.subarea_id || el.quantity !== loc.quantity)) {
+            if (el && (el.subarea_id !== loc.subarea_id || el.quantity !== locQty)) {
               await updateInventoryLevel(loc.existingLevelId, {
                 subarea_id: loc.subarea_id,
-                quantity: loc.quantity,
+                quantity: locQty,
               })
             }
           } else {
             await createInventoryLevel({
               product_id: productId,
               subarea_id: loc.subarea_id,
-              quantity: loc.quantity,
+              quantity: locQty,
             })
           }
         }
@@ -573,14 +574,14 @@ export default function Products() {
                         Localizações e Estoque
                       </h3>
                       <p className="text-xs text-zinc-500">
-                        Defina onde este produto está armazenado.
+                        Defina onde este produto está armazenado (quantidade é opcional, padrão 0).
                       </p>
                     </div>
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={() => append({ area_id: '', subarea_id: '', quantity: 0 })}
+                      onClick={() => append({ area_id: '', subarea_id: '', quantity: null })}
                       className="h-8 text-xs border-emerald-200 text-emerald-700 hover:bg-emerald-50"
                     >
                       <Plus className="w-3 h-3 mr-1" />
@@ -668,7 +669,7 @@ export default function Products() {
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          <div className="w-24">
+                          <div className="w-28">
                             <FormField
                               control={form.control}
                               name={`locations.${index}.quantity` as any}
@@ -678,15 +679,15 @@ export default function Products() {
                                     <Input
                                       type="number"
                                       step="any"
-                                      placeholder="Qtd"
-                                      className="bg-white h-9"
+                                      min="0"
+                                      placeholder="0 (opcional)"
+                                      className="bg-white h-9 text-right"
                                       {...qField}
                                       value={qField.value ?? ''}
-                                      onChange={(e) =>
-                                        qField.onChange(
-                                          e.target.value === '' ? 0 : Number(e.target.value),
-                                        )
-                                      }
+                                      onChange={(e) => {
+                                        const val = e.target.value
+                                        qField.onChange(val === '' ? null : Number(val))
+                                      }}
                                     />
                                   </FormControl>
                                   <FormMessage />

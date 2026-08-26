@@ -152,7 +152,7 @@ export default function InventoryLevels() {
         {selectedProductId && (
           <div className="space-y-4 animate-fade-in">
             <h3 className="font-semibold text-zinc-900 border-b pb-2">
-              Selecione os locais e estoque inicial
+              Selecione os locais de estoque
             </h3>
             <div className="grid gap-3">
               {subareas.map((sub) => {
@@ -181,6 +181,8 @@ export default function InventoryLevels() {
                       <div className="w-24">
                         <Input
                           type="number"
+                          min="0"
+                          step="any"
                           value={state.quantity}
                           onChange={(e) =>
                             setEditState((prev) => ({
@@ -189,7 +191,7 @@ export default function InventoryLevels() {
                             }))
                           }
                           className="h-9 text-right font-medium"
-                          placeholder="Qtd"
+                          placeholder="0"
                         />
                       </div>
                     )}
