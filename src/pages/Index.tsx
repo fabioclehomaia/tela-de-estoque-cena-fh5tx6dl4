@@ -70,9 +70,14 @@ export default function Index() {
     if (!user) return areas
     if (user.role === 'admin' || user.role === 'manager') return areas
     const userAreaIds = user.area_ids || []
-    if (userAreaIds.length === 0) return areas
-    return areas.filter((a) => userAreaIds.includes(a.id))
-  }, [areas, user])
+    const userSubareaIds = user.subarea_ids || []
+    if (userAreaIds.length === 0 && userSubareaIds.length === 0) return areas
+    return areas.filter(
+      (a) =>
+        userAreaIds.includes(a.id) ||
+        subareas.some((s) => s.area_id === a.id && userSubareaIds.includes(s.id)),
+    )
+  }, [areas, subareas, user])
 
   const availableSubareas = useMemo(() => {
     let filtered = subareas
@@ -80,9 +85,12 @@ export default function Index() {
       filtered = filtered.filter((s) => s.area_id === selectedAreaId)
     }
     if (user && user.role === 'employee') {
+      const userAreaIds = user.area_ids || []
       const userSubareaIds = user.subarea_ids || []
-      if (userSubareaIds.length > 0) {
-        filtered = filtered.filter((s) => userSubareaIds.includes(s.id))
+      if (userAreaIds.length > 0 || userSubareaIds.length > 0) {
+        filtered = filtered.filter(
+          (s) => userAreaIds.includes(s.area_id) || userSubareaIds.includes(s.id),
+        )
       }
     }
     return filtered
@@ -130,9 +138,25 @@ export default function Index() {
   const filteredItems = useMemo(() => {
     return allItems
       .filter((item) => {
+        const subarea = subareas.find((s) => s.id === item.subareaId)
+        const areaId = subarea?.area_id
+
+        // Permissão de acesso por perfil: funcionários só veem suas áreas/subáreas permitidas
+        if (user && user.role === 'employee') {
+          const userAreaIds = user.area_ids || []
+          const userSubareaIds = user.subarea_ids || []
+          if (userAreaIds.length > 0 || userSubareaIds.length > 0) {
+            const hasAreaAccess = areaId ? userAreaIds.includes(areaId) : false
+            const hasSubareaAccess = userSubareaIds.includes(item.subareaId)
+            if (!hasAreaAccess && !hasSubareaAccess) {
+              return false
+            }
+          }
+        }
+
+        // Filtros selecionados na UI
         if (selectedAreaId !== '_all_') {
-          const subarea = subareas.find((s) => s.id === item.subareaId)
-          if (subarea?.area_id !== selectedAreaId) return false
+          if (areaId !== selectedAreaId) return false
         }
         if (selectedSubareaId !== '_all_' && item.subareaId !== selectedSubareaId) return false
         if (selectedCategoryId !== '_all_') {
@@ -163,6 +187,7 @@ export default function Index() {
     searchQuery,
     subareas,
     orderMap,
+    user,
   ])
 
   const groupedItems = useMemo(() => {
