@@ -33,13 +33,28 @@ export const createUser = (
     ...data,
   })
 
+export const resetUserPassword = async (
+  userId: string,
+  password: string,
+  passwordConfirm: string,
+) => {
+  return pb.send<{ success: boolean; message: string }>('/backend/v1/users/reset-password', {
+    method: 'POST',
+    body: {
+      userId,
+      password,
+      passwordConfirm,
+    },
+  })
+}
+
 export const updateUser = async (
   id: string,
   data: Partial<User> & { password?: string; passwordConfirm?: string; emailVisibility?: boolean },
 ) => {
   const payload: Record<string, any> = {}
 
-  // Copiar apenas campos válidos
+  // Copiar apenas campos cadastrais válidos — sem password/passwordConfirm
   if (data.name !== undefined) payload.name = data.name.trim()
   if (data.email !== undefined && data.email.trim() !== '') {
     payload.email = data.email.trim().toLowerCase()
@@ -51,16 +66,18 @@ export const updateUser = async (
   if (data.subarea_ids !== undefined) payload.subarea_ids = data.subarea_ids
   if (data.avatar !== undefined) payload.avatar = data.avatar
 
-  // SÓ incluir password e passwordConfirm se a senha for uma string não-vazia com 6+ caracteres
+  // 1. Atualizar os dados cadastrais via update (sem password)
+  const updatedUser = await pb.collection('users').update<User>(id, payload)
+
+  // 2. Se houver password e passwordConfirm válidos (6+ caracteres), chamar a rota personalizada de reset de senha
   const pwd = typeof data.password === 'string' ? data.password.trim() : ''
   const pwdConfirm = typeof data.passwordConfirm === 'string' ? data.passwordConfirm.trim() : ''
 
   if (pwd.length >= 6) {
-    payload.password = pwd
-    payload.passwordConfirm = pwdConfirm || pwd
+    await resetUserPassword(id, pwd, pwdConfirm || pwd)
   }
 
-  return pb.collection('users').update<User>(id, payload)
+  return updatedUser
 }
 
 export const deleteUser = async (id: string) => {

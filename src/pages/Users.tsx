@@ -102,16 +102,17 @@ export default function Users() {
           subarea_ids: values.subarea_ids,
         }
 
+        const hasPassword = !!(values.password && values.password.trim().length >= 6)
         // Enviar senha SOMENTE se foi informada e preenchida (mínimo 6 dígitos)
-        if (values.password && values.password.trim().length >= 6) {
-          payload.password = values.password.trim()
-          payload.passwordConfirm = (values.passwordConfirm || values.password).trim()
+        if (hasPassword) {
+          payload.password = values.password!.trim()
+          payload.passwordConfirm = (values.passwordConfirm || values.password)!.trim()
         }
 
         await updateUser(editingUser.id, payload)
         toast({
           title: 'Usuário atualizado com sucesso!',
-          description: payload.password
+          description: hasPassword
             ? 'Dados e senha foram alterados com sucesso.'
             : 'Dados cadastrais salvos com sucesso.',
           className: 'bg-emerald-800 text-white border-none',
