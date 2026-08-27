@@ -31,7 +31,7 @@ import {
   InventoryLevel,
 } from '@/services/inventory_levels'
 import { useRealtime } from '@/hooks/use-realtime'
-import { extractFieldErrors } from '@/lib/pocketbase/errors'
+import { extractFieldErrors, getErrorMessage } from '@/lib/pocketbase/errors'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -170,6 +170,9 @@ export default function Products() {
   useRealtime('inventory_levels', loadData)
 
   const onSubmit = async (data: z.infer<typeof schema>) => {
+    let createdOrUpdatedProductId: string | null = null
+    const wasEditing = !!editingId
+
     try {
       const formData = new FormData()
       formData.append('name', data.name)
@@ -193,9 +196,12 @@ export default function Products() {
       let productId = editingId
       if (editingId) {
         await updateProduct(editingId, formData)
+        productId = editingId
+        createdOrUpdatedProductId = editingId
       } else {
         const newProd = await createProduct(formData)
         productId = newProd.id
+        createdOrUpdatedProductId = newProd.id
       }
 
       if (productId) {
@@ -246,16 +252,31 @@ export default function Products() {
       toast.success('Produto salvo com sucesso!')
       await loadData()
     } catch (e: any) {
-      const errs = extractFieldErrors(e)
-      if (Object.keys(errs).length > 0) {
-        Object.keys(errs).forEach((k) => form.setError(k as any, { message: errs[k] }))
+      console.error('Erro ao salvar produto/inventory_level:', e)
+
+      if (createdOrUpdatedProductId) {
+        // Product was created or updated successfully, but inventory_levels failed
+        const realError = getErrorMessage(e)
+        console.error('Erro ao salvar inventory_level:', e)
+        toast.error(
+          `Produto ${wasEditing ? 'atualizado' : 'criado'}, mas falha ao vincular à área/subárea. Motivo: ${realError}`,
+        )
+        // Refresh data so product at least appears in the UI
+        loadData()
       } else {
-        const msg =
-          e?.response?.message ||
-          (e?.status === 413
-            ? 'Arquivo muito grande. Máximo 5MB.'
-            : 'Erro ao salvar produto. Verifique os dados e tente novamente.')
-        toast.error(msg)
+        const errs = extractFieldErrors(e)
+        if (Object.keys(errs).length > 0) {
+          Object.keys(errs).forEach((k) => form.setError(k as any, { message: errs[k] }))
+        } else {
+          const realMsg = getErrorMessage(e)
+          const msg =
+            e?.status === 413
+              ? 'Arquivo muito grande. Máximo 5MB.'
+              : realMsg && realMsg !== 'An unexpected error occurred.'
+                ? `Erro ao salvar produto: ${realMsg}`
+                : 'Erro ao salvar produto. Verifique os dados e tente novamente.'
+          toast.error(msg)
+        }
       }
     }
   }
