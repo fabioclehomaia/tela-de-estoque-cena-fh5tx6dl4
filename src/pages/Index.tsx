@@ -7,6 +7,9 @@ import { CountableItem } from '@/types/inventory'
 import { InventoryArea } from '@/components/inventory/InventoryArea'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Badge } from '@/components/ui/badge'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   Select,
   SelectContent,
@@ -16,7 +19,7 @@ import {
 } from '@/components/ui/select'
 import { useAuth } from '@/hooks/use-auth'
 import { useRealtime } from '@/hooks/use-realtime'
-import { Search, FilterX, Loader2, PackageSearch } from 'lucide-react'
+import { Search, FilterX, Loader2, PackageSearch, ChevronDown, Check, X } from 'lucide-react'
 import { toast } from 'sonner'
 
 export default function Index() {
@@ -31,7 +34,8 @@ export default function Index() {
 
   const [selectedAreaId, setSelectedAreaId] = useState<string>('_all_')
   const [selectedSubareaId, setSelectedSubareaId] = useState<string>('_all_')
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string>('_all_')
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([])
+  const [categoryPopoverOpen, setCategoryPopoverOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [countState, setCountState] = useState<Record<string, number | null>>({})
   const [completedAreas, setCompletedAreas] = useState<Set<string>>(new Set())
@@ -159,9 +163,20 @@ export default function Index() {
           if (areaId !== selectedAreaId) return false
         }
         if (selectedSubareaId !== '_all_' && item.subareaId !== selectedSubareaId) return false
-        if (selectedCategoryId !== '_all_') {
-          if (item.productObj?.category_id !== selectedCategoryId) return false
+
+        // Multi-seleção de categorias: se o usuário selecionou categorias ou categorias de custo
+        if (selectedCategoryIds.length > 0) {
+          const catId = item.productObj?.category_id
+          const costCat = item.productObj?.cost_category
+            ? `cost:${item.productObj.cost_category}`
+            : undefined
+          const matchStandardCat = catId ? selectedCategoryIds.includes(catId) : false
+          const matchCostCat = costCat ? selectedCategoryIds.includes(costCat) : false
+          if (!matchStandardCat && !matchCostCat) {
+            return false
+          }
         }
+
         if (searchQuery && !item.name.toLowerCase().includes(searchQuery.toLowerCase()))
           return false
         return true
@@ -183,7 +198,7 @@ export default function Index() {
     allItems,
     selectedAreaId,
     selectedSubareaId,
-    selectedCategoryId,
+    selectedCategoryIds,
     searchQuery,
     subareas,
     orderMap,
@@ -230,14 +245,14 @@ export default function Index() {
   const clearFilters = () => {
     setSelectedAreaId('_all_')
     setSelectedSubareaId('_all_')
-    setSelectedCategoryId('_all_')
+    setSelectedCategoryIds([])
     setSearchQuery('')
   }
 
   const hasActiveFilters =
     selectedAreaId !== '_all_' ||
     selectedSubareaId !== '_all_' ||
-    selectedCategoryId !== '_all_' ||
+    selectedCategoryIds.length > 0 ||
     searchQuery !== ''
 
   if (loading) {
@@ -302,20 +317,156 @@ export default function Index() {
             </Select>
           </div>
           <div className="space-y-1.5">
-            <label className="text-sm font-medium">Categoria</label>
-            <Select value={selectedCategoryId} onValueChange={setSelectedCategoryId}>
-              <SelectTrigger>
-                <SelectValue placeholder="Todas as categorias" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="_all_">Todas as categorias</SelectItem>
-                {categories.map((c) => (
-                  <SelectItem key={c.id} value={c.id}>
-                    {c.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium">Categorias</label>
+              {selectedCategoryIds.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedCategoryIds([])}
+                  className="text-xs text-zinc-400 hover:text-zinc-600 font-medium"
+                >
+                  Limpar ({selectedCategoryIds.length})
+                </button>
+              )}
+            </div>
+            <Popover open={categoryPopoverOpen} onOpenChange={setCategoryPopoverOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={categoryPopoverOpen}
+                  className="w-full justify-between font-normal bg-white h-10 px-3 border-input"
+                >
+                  <span className="truncate text-sm text-left">
+                    {selectedCategoryIds.length === 0 ? (
+                      <span className="text-zinc-700 font-normal">Todas as categorias</span>
+                    ) : selectedCategoryIds.length === 1 ? (
+                      (() => {
+                        const id = selectedCategoryIds[0]
+                        const cat = categories.find((c) => c.id === id)
+                        return cat?.name || id
+                      })()
+                    ) : (
+                      <span className="font-medium text-emerald-800">
+                        {selectedCategoryIds.length} categorias selecionadas
+                      </span>
+                    )}
+                  </span>
+                  <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80 p-0" align="start">
+                <div className="p-2 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/70">
+                  <span className="text-xs font-semibold text-zinc-600 uppercase tracking-wide">
+                    Filtrar por Categoria
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    {selectedCategoryIds.length > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedCategoryIds([])}
+                        className="text-xs text-emerald-700 hover:text-emerald-800 font-medium px-1.5 py-0.5 rounded hover:bg-emerald-50"
+                      >
+                        Limpar seleção
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedCategoryIds(categories.map((c) => c.id))}
+                        className="text-xs text-emerald-700 hover:text-emerald-800 font-medium px-1.5 py-0.5 rounded hover:bg-emerald-50"
+                      >
+                        Marcar todas
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="max-h-64 overflow-y-auto p-1.5 space-y-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCategoryIds([])}
+                    className={`w-full flex items-center justify-between px-2.5 py-2 text-sm rounded-md transition-colors text-left ${
+                      selectedCategoryIds.length === 0
+                        ? 'bg-emerald-50 text-emerald-900 font-medium'
+                        : 'text-zinc-700 hover:bg-zinc-100'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <Checkbox
+                        checked={selectedCategoryIds.length === 0}
+                        onCheckedChange={() => setSelectedCategoryIds([])}
+                      />
+                      <span>Todas as categorias</span>
+                    </div>
+                    {selectedCategoryIds.length === 0 && (
+                      <Check className="w-4 h-4 text-emerald-600" />
+                    )}
+                  </button>
+
+                  <div className="my-1 border-t border-zinc-100" />
+
+                  {categories.map((c) => {
+                    const isChecked = selectedCategoryIds.includes(c.id)
+                    const count = allItems.filter(
+                      (item) => item.productObj?.category_id === c.id,
+                    ).length
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedCategoryIds((prev) =>
+                            prev.includes(c.id)
+                              ? prev.filter((id) => id !== c.id)
+                              : [...prev, c.id],
+                          )
+                        }}
+                        className={`w-full flex items-center justify-between px-2.5 py-2 text-sm rounded-md transition-colors text-left ${
+                          isChecked
+                            ? 'bg-emerald-50/70 text-emerald-900 font-medium'
+                            : 'text-zinc-700 hover:bg-zinc-100'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                          <Checkbox
+                            checked={isChecked}
+                            onCheckedChange={() => {
+                              setSelectedCategoryIds((prev) =>
+                                prev.includes(c.id)
+                                  ? prev.filter((id) => id !== c.id)
+                                  : [...prev, c.id],
+                              )
+                            }}
+                          />
+                          <span className="truncate">{c.name}</span>
+                        </div>
+                        {count > 0 && (
+                          <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-zinc-100 text-zinc-500 shrink-0 font-normal">
+                            {count}
+                          </span>
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {selectedCategoryIds.length > 0 && (
+                  <div className="p-2 border-t border-zinc-100 bg-zinc-50/50 flex items-center justify-between">
+                    <span className="text-xs text-zinc-500">
+                      {selectedCategoryIds.length} selecionada(s)
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="default"
+                      className="h-7 text-xs bg-emerald-700 hover:bg-emerald-800"
+                      onClick={() => setCategoryPopoverOpen(false)}
+                    >
+                      Aplicar
+                    </Button>
+                  </div>
+                )}
+              </PopoverContent>
+            </Popover>
           </div>
         </div>
 
@@ -332,10 +483,45 @@ export default function Index() {
           </div>
           {hasActiveFilters && (
             <Button variant="outline" size="sm" onClick={clearFilters}>
-              <FilterX className="h-4 w-4 mr-1" /> Limpar
+              <FilterX className="h-4 w-4 mr-1" /> Limpar filtros
             </Button>
           )}
         </div>
+
+        {selectedCategoryIds.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-zinc-100">
+            <span className="text-xs text-zinc-500 mr-1">Categorias filtradas:</span>
+            {selectedCategoryIds.map((id) => {
+              const cat = categories.find((c) => c.id === id)
+              const name = cat?.name || id
+              return (
+                <Badge
+                  key={id}
+                  variant="secondary"
+                  className="bg-emerald-50 text-emerald-800 border border-emerald-200/80 hover:bg-emerald-100/70 text-xs font-normal pl-2 pr-1 py-0.5 flex items-center gap-1"
+                >
+                  <span className="max-w-[160px] truncate">{name}</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSelectedCategoryIds((prev) => prev.filter((item) => item !== id))
+                    }
+                    className="rounded-full p-0.5 hover:bg-emerald-200/60 text-emerald-700"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </Badge>
+              )
+            })}
+            <button
+              type="button"
+              onClick={() => setSelectedCategoryIds([])}
+              className="text-xs text-zinc-400 hover:text-zinc-600 underline ml-1"
+            >
+              Remover todas
+            </button>
+          </div>
+        )}
       </div>
 
       {groupedItems.length === 0 ? (
