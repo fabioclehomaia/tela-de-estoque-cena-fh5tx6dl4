@@ -100,6 +100,68 @@ export default function Index() {
     return filtered
   }, [subareas, selectedAreaId, user])
 
+  // Categorias disponíveis filtradas pelo contexto de área/subárea selecionada e permissões do usuário
+  const availableCategories = useMemo(() => {
+    // Se nenhuma área/subárea foi selecionada e o usuário não for restrito, lista todas as categorias
+    const isEmployee = user && user.role === 'employee'
+    const userAreaIds = user?.area_ids || []
+    const userSubareaIds = user?.subarea_ids || []
+    const hasEmployeeRestrictions =
+      isEmployee && (userAreaIds.length > 0 || userSubareaIds.length > 0)
+
+    const productMap = new Map(products.map((p) => [p.id, p]))
+
+    // Identificar os IDs de categorias presentes nos níveis de estoque relevantes
+    const relevantCategoryIds = new Set<string>()
+
+    levels.forEach((level) => {
+      const product = level.expand?.product_id || productMap.get(level.product_id)
+      if (!product || product.active === false) return
+      const subarea = level.expand?.subarea_id || subareas.find((s) => s.id === level.subarea_id)
+      if (!subarea) return
+
+      // Checar permissão de funcionário
+      if (hasEmployeeRestrictions) {
+        const areaId = subarea.area_id
+        const hasAreaAccess = areaId ? userAreaIds.includes(areaId) : false
+        const hasSubareaAccess = userSubareaIds.includes(level.subarea_id)
+        if (!hasAreaAccess && !hasSubareaAccess) return
+      }
+
+      // Checar filtro de área
+      if (selectedAreaId !== '_all_') {
+        if (subarea.area_id !== selectedAreaId) return
+      }
+
+      // Checar filtro de subárea
+      if (selectedSubareaId !== '_all_') {
+        if (level.subarea_id !== selectedSubareaId) return
+      }
+
+      if (product.category_id) {
+        relevantCategoryIds.add(product.category_id)
+      }
+    })
+
+    // Se estiver em "Todas as áreas" e "Todas as subáreas" (e sem restrição ou nenhuma categoria encontrada),
+    // se não houver seleção de área/subárea específica, podemos retornar todas as categorias cadastradas
+    if (selectedAreaId === '_all_' && selectedSubareaId === '_all_' && !hasEmployeeRestrictions) {
+      return categories
+    }
+
+    return categories.filter((c) => relevantCategoryIds.has(c.id))
+  }, [categories, products, levels, subareas, selectedAreaId, selectedSubareaId, user])
+
+  // Ajustar seleção de categorias ativas se alguma selecionada não estiver mais disponível
+  useEffect(() => {
+    if (selectedCategoryIds.length === 0) return
+    const availableSet = new Set(availableCategories.map((c) => c.id))
+    const validSelection = selectedCategoryIds.filter((id) => availableSet.has(id))
+    if (validSelection.length !== selectedCategoryIds.length) {
+      setSelectedCategoryIds(validSelection)
+    }
+  }, [availableCategories, selectedCategoryIds])
+
   const allItems = useMemo<CountableItem[]>(() => {
     const productMap = new Map(products.map((p) => [p.id, p]))
     const items: CountableItem[] = []
@@ -369,15 +431,15 @@ export default function Index() {
                       >
                         Limpar seleção
                       </button>
-                    ) : (
+                    ) : availableCategories.length > 0 ? (
                       <button
                         type="button"
-                        onClick={() => setSelectedCategoryIds(categories.map((c) => c.id))}
+                        onClick={() => setSelectedCategoryIds(availableCategories.map((c) => c.id))}
                         className="text-xs text-emerald-700 hover:text-emerald-800 font-medium px-1.5 py-0.5 rounded hover:bg-emerald-50"
                       >
                         Marcar todas
                       </button>
-                    )}
+                    ) : null}
                   </div>
                 </div>
 
@@ -405,49 +467,73 @@ export default function Index() {
 
                   <div className="my-1 border-t border-zinc-100" />
 
-                  {categories.map((c) => {
-                    const isChecked = selectedCategoryIds.includes(c.id)
-                    const count = allItems.filter(
-                      (item) => item.productObj?.category_id === c.id,
-                    ).length
-                    return (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedCategoryIds((prev) =>
-                            prev.includes(c.id)
-                              ? prev.filter((id) => id !== c.id)
-                              : [...prev, c.id],
-                          )
-                        }}
-                        className={`w-full flex items-center justify-between px-2.5 py-2 text-sm rounded-md transition-colors text-left ${
-                          isChecked
-                            ? 'bg-emerald-50/70 text-emerald-900 font-medium'
-                            : 'text-zinc-700 hover:bg-zinc-100'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0 pr-2">
-                          <Checkbox
-                            checked={isChecked}
-                            onCheckedChange={() => {
-                              setSelectedCategoryIds((prev) =>
-                                prev.includes(c.id)
-                                  ? prev.filter((id) => id !== c.id)
-                                  : [...prev, c.id],
-                              )
-                            }}
-                          />
-                          <span className="truncate">{c.name}</span>
-                        </div>
-                        {count > 0 && (
-                          <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-zinc-100 text-zinc-500 shrink-0 font-normal">
-                            {count}
-                          </span>
-                        )}
-                      </button>
-                    )
-                  })}
+                  {availableCategories.length === 0 ? (
+                    <div className="p-3 text-center text-xs text-zinc-500">
+                      Nenhuma categoria encontrada para esta subárea/área.
+                    </div>
+                  ) : (
+                    availableCategories.map((c) => {
+                      const isChecked = selectedCategoryIds.includes(c.id)
+                      const count = allItems.filter((item) => {
+                        if (item.productObj?.category_id !== c.id) return false
+                        const subarea = subareas.find((s) => s.id === item.subareaId)
+                        const areaId = subarea?.area_id
+
+                        if (user && user.role === 'employee') {
+                          const userAreaIds = user.area_ids || []
+                          const userSubareaIds = user.subarea_ids || []
+                          if (userAreaIds.length > 0 || userSubareaIds.length > 0) {
+                            const hasAreaAccess = areaId ? userAreaIds.includes(areaId) : false
+                            const hasSubareaAccess = userSubareaIds.includes(item.subareaId)
+                            if (!hasAreaAccess && !hasSubareaAccess) return false
+                          }
+                        }
+
+                        if (selectedAreaId !== '_all_' && areaId !== selectedAreaId) return false
+                        if (selectedSubareaId !== '_all_' && item.subareaId !== selectedSubareaId)
+                          return false
+                        return true
+                      }).length
+
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedCategoryIds((prev) =>
+                              prev.includes(c.id)
+                                ? prev.filter((id) => id !== c.id)
+                                : [...prev, c.id],
+                            )
+                          }}
+                          className={`w-full flex items-center justify-between px-2.5 py-2 text-sm rounded-md transition-colors text-left ${
+                            isChecked
+                              ? 'bg-emerald-50/70 text-emerald-900 font-medium'
+                              : 'text-zinc-700 hover:bg-zinc-100'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                            <Checkbox
+                              checked={isChecked}
+                              onCheckedChange={() => {
+                                setSelectedCategoryIds((prev) =>
+                                  prev.includes(c.id)
+                                    ? prev.filter((id) => id !== c.id)
+                                    : [...prev, c.id],
+                                )
+                              }}
+                            />
+                            <span className="truncate">{c.name}</span>
+                          </div>
+                          {count > 0 && (
+                            <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-zinc-100 text-zinc-500 shrink-0 font-normal">
+                              {count}
+                            </span>
+                          )}
+                        </button>
+                      )
+                    })
+                  )}
                 </div>
 
                 {selectedCategoryIds.length > 0 && (
