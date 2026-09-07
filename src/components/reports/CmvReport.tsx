@@ -24,7 +24,11 @@ const formatCurrency = (v: number) =>
 
 const safeDate = (s: string) => new Date(s.split(' ')[0])
 
-export function CmvReport() {
+interface CmvReportProps {
+  selectedCategoryIds?: string[]
+}
+
+export function CmvReport({ selectedCategoryIds = [] }: CmvReportProps) {
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [loading, setLoading] = useState(true)
@@ -53,10 +57,27 @@ export function CmvReport() {
     load()
   }, [])
 
+  const filteredProducts = useMemo(() => {
+    if (selectedCategoryIds.length === 0) return products
+    return products.filter((p) => {
+      const matchStandardCat = p.category_id ? selectedCategoryIds.includes(p.category_id) : false
+      const costCat = p.cost_category ? `cost:${p.cost_category}` : undefined
+      const matchCostCat = costCat ? selectedCategoryIds.includes(costCat) : false
+      return matchStandardCat || matchCostCat
+    })
+  }, [products, selectedCategoryIds])
+
   const cmvResult = useMemo(() => {
     if (!startDate || !endDate) return null
-    return calculateCMV(products, compras, levels, counts, safeDate(startDate), safeDate(endDate))
-  }, [products, compras, levels, counts, startDate, endDate])
+    return calculateCMV(
+      filteredProducts,
+      compras,
+      levels,
+      counts,
+      safeDate(startDate),
+      safeDate(endDate),
+    )
+  }, [filteredProducts, compras, levels, counts, startDate, endDate])
 
   const faturamento = useMemo(() => {
     if (!startDate || !endDate) return null

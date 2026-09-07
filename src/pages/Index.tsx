@@ -3,7 +3,8 @@ import { getProducts, Product } from '@/services/products'
 import { getAreas, getSubareas, getCategories, Area, Subarea, Category } from '@/services/inventory'
 import { getInventoryLevels, InventoryLevel } from '@/services/inventory_levels'
 import { getCountOrders, CountOrder, batchSaveCountOrders } from '@/services/count_order'
-import { CountableItem } from '@/types/inventory'
+import { getInventoryCounts, InventoryCount } from '@/services/inventory_counts'
+import { CountableItem, LastCountInfo } from '@/types/inventory'
 import { InventoryArea } from '@/components/inventory/InventoryArea'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -30,6 +31,7 @@ export default function Index() {
   const [products, setProducts] = useState<Product[]>([])
   const [levels, setLevels] = useState<InventoryLevel[]>([])
   const [countOrders, setCountOrders] = useState<CountOrder[]>([])
+  const [inventoryCounts, setInventoryCounts] = useState<InventoryCount[]>([])
   const [loading, setLoading] = useState(true)
 
   const [selectedAreaId, setSelectedAreaId] = useState<string>('_all_')
@@ -42,13 +44,14 @@ export default function Index() {
 
   const loadData = async () => {
     try {
-      const [a, s, c, p, l, co] = await Promise.all([
+      const [a, s, c, p, l, co, counts] = await Promise.all([
         getAreas(),
         getSubareas(),
         getCategories(),
         getProducts(),
         getInventoryLevels(),
         getCountOrders(),
+        getInventoryCounts(),
       ])
       setAreas(a)
       setSubareas(s)
@@ -56,6 +59,7 @@ export default function Index() {
       setProducts(p)
       setLevels(l)
       setCountOrders(co)
+      setInventoryCounts(counts)
     } catch {
       toast.error('Erro ao carregar dados do estoque.')
     } finally {
@@ -162,6 +166,25 @@ export default function Index() {
     }
   }, [availableCategories, selectedCategoryIds])
 
+  // Mapa da última contagem realizada para cada produto
+  const latestCountByProduct = useMemo(() => {
+    const map = new Map<string, LastCountInfo>()
+    // Como getInventoryCounts já retorna ordenado por -created (ou checamos por data)
+    for (const count of inventoryCounts) {
+      if (!count.product_id) continue
+      const existing = map.get(count.product_id)
+      if (!existing || new Date(count.created) > new Date(existing.date)) {
+        const userName =
+          count.expand?.user_id?.name || count.expand?.user_id?.email?.split('@')[0] || 'Usuário'
+        map.set(count.product_id, {
+          date: count.created,
+          userName,
+        })
+      }
+    }
+    return map
+  }, [inventoryCounts])
+
   const allItems = useMemo<CountableItem[]>(() => {
     const productMap = new Map(products.map((p) => [p.id, p]))
     const items: CountableItem[] = []
@@ -187,11 +210,12 @@ export default function Index() {
         minStock: product.min_stock ?? null,
         image: product.image,
         productObj: product,
+        lastCount: latestCountByProduct.get(level.product_id) || null,
       })
     })
 
     return items
-  }, [levels, products, subareas, countState])
+  }, [levels, products, subareas, countState, latestCountByProduct])
 
   const orderMap = useMemo(() => {
     const map = new Map<string, number>()

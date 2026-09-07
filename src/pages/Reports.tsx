@@ -29,6 +29,8 @@ import {
   BarChart3,
   ChevronDown,
   Layers,
+  Check,
+  X,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -107,7 +109,8 @@ export default function Reports() {
   const [userId, setUserId] = useState<string>('_all_')
   const [areaId, setAreaId] = useState<string>('_all_')
   const [subareaId, setSubareaId] = useState<string>('_all_')
-  const [categoryId, setCategoryId] = useState<string>('_all_')
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([])
+  const [categoryPopoverOpen, setCategoryPopoverOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
 
   const [selectedProduct, setSelectedProduct] = useState<any>(null)
@@ -223,7 +226,11 @@ export default function Reports() {
       }
 
       if (userId !== '_all_' && count.user_id !== userId) return false
-      if (categoryId !== '_all_' && product?.category_id !== categoryId) return false
+      if (
+        selectedCategoryIds.length > 0 &&
+        (!product?.category_id || !selectedCategoryIds.includes(product.category_id))
+      )
+        return false
 
       const subarea = count.expand?.subarea_id
       if (areaId !== '_all_') {
@@ -233,13 +240,17 @@ export default function Reports() {
 
       return true
     })
-  }, [counts, searchQuery, startDate, endDate, userId, categoryId, areaId, subareaId])
+  }, [counts, searchQuery, startDate, endDate, userId, selectedCategoryIds, areaId, subareaId])
 
   // --- SUMMARY TAB DATA ---
   const summaryByProduct = useMemo(() => {
     const map = new Map<string, any>()
     products.forEach((p) => {
-      if (categoryId !== '_all_' && p.category_id !== categoryId) return
+      if (
+        selectedCategoryIds.length > 0 &&
+        (!p.category_id || !selectedCategoryIds.includes(p.category_id))
+      )
+        return
       map.set(p.id, {
         id: p.id,
         name: p.name,
@@ -305,7 +316,7 @@ export default function Reports() {
     levels,
     products,
     searchQuery,
-    categoryId,
+    selectedCategoryIds,
     areaId,
     subareaId,
     sortField,
@@ -318,7 +329,11 @@ export default function Reports() {
     const map = new Map<string, any>()
     products.forEach((p) => {
       if (!p.active) return
-      if (categoryId !== '_all_' && p.category_id !== categoryId) return
+      if (
+        selectedCategoryIds.length > 0 &&
+        (!p.category_id || !selectedCategoryIds.includes(p.category_id))
+      )
+        return
       map.set(p.id, { product: p, total: 0 })
     })
 
@@ -349,7 +364,7 @@ export default function Reports() {
       )
     }
     return list.sort((a, b) => b.need - a.need)
-  }, [products, levels, productLocations, categoryId, areaId, subareaId, searchQuery])
+  }, [products, levels, productLocations, selectedCategoryIds, areaId, subareaId, searchQuery])
 
   // --- TRENDS TAB DATA ---
   const consumptionData = useMemo(() => {
@@ -368,7 +383,11 @@ export default function Reports() {
         if (safeDate(c.created) > endOfDay(safeDate(endDate))) return false
       }
 
-      if (categoryId !== '_all_' && product.category_id !== categoryId) return false
+      if (
+        selectedCategoryIds.length > 0 &&
+        (!product.category_id || !selectedCategoryIds.includes(product.category_id))
+      )
+        return false
       const subarea = c.expand?.subarea_id
       if (areaId !== '_all_' && subarea?.expand?.area_id?.id !== areaId) return false
       if (subareaId !== '_all_' && subarea?.id !== subareaId) return false
@@ -409,7 +428,7 @@ export default function Reports() {
       .map((t) => ({ date: t.display, consumption: t.consumption }))
 
     return { list, chartData }
-  }, [counts, products, startDate, endDate, categoryId, areaId, subareaId, searchQuery])
+  }, [counts, products, startDate, endDate, selectedCategoryIds, areaId, subareaId, searchQuery])
 
   const priceEvolutionData = useMemo(() => {
     const filteredProductIds = new Set(
@@ -498,7 +517,11 @@ export default function Reports() {
         if (safeDate(c.created) > endOfDay(safeDate(endDate))) return false
       }
 
-      if (categoryId !== '_all_' && product.category_id !== categoryId) return false
+      if (
+        selectedCategoryIds.length > 0 &&
+        (!product.category_id || !selectedCategoryIds.includes(product.category_id))
+      )
+        return false
       const subarea = c.expand?.subarea_id
       if (areaId !== '_all_' && subarea?.expand?.area_id?.id !== areaId) return false
       if (subareaId !== '_all_' && subarea?.id !== subareaId) return false
@@ -560,7 +583,7 @@ export default function Reports() {
     priceHistory,
     startDate,
     endDate,
-    categoryId,
+    selectedCategoryIds,
     areaId,
     subareaId,
     searchQuery,
@@ -784,7 +807,7 @@ export default function Reports() {
     setStartDate('')
     setEndDate('')
     setUserId('_all_')
-    setCategoryId('_all_')
+    setSelectedCategoryIds([])
     setAreaId('_all_')
     setSubareaId('_all_')
     setSearchQuery('')
@@ -857,158 +880,323 @@ export default function Reports() {
           </TabsTrigger>
         </TabsList>
 
-        {activeTab !== 'cmv' && activeTab !== 'financial' && (
-          <Card className="shadow-sm border-zinc-200 mb-6 bg-white">
-            <CardContent className="p-4 space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 items-end">
-                {(activeTab === 'history' || activeTab === 'trends' || activeTab === 'prices') && (
-                  <div className="space-y-1.5 lg:col-span-2">
-                    <Label>Período</Label>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        type="date"
-                        value={startDate}
-                        onChange={(e) => {
-                          setStartDate(e.target.value)
-                          setActiveShortcut('')
-                        }}
-                        className="w-full text-sm"
-                      />
-                      <span className="text-zinc-400">até</span>
-                      <Input
-                        type="date"
-                        value={endDate}
-                        onChange={(e) => {
-                          setEndDate(e.target.value)
-                          setActiveShortcut('')
-                        }}
-                        className="w-full text-sm"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {activeTab === 'trends' && (
-                  <div className="space-y-1.5">
-                    <Label>Atalhos</Label>
-                    <Select
-                      value={activeShortcut}
-                      onValueChange={(val) => {
-                        setActiveShortcut(val)
-                        if (val === '1_week') {
-                          setStartDate(format(subDays(new Date(), 7), 'yyyy-MM-dd'))
-                          setEndDate(format(new Date(), 'yyyy-MM-dd'))
-                        } else if (val === '30') {
-                          setStartDate(format(subDays(new Date(), 30), 'yyyy-MM-dd'))
-                          setEndDate(format(new Date(), 'yyyy-MM-dd'))
-                        } else if (val === 'last_month') {
-                          const start = startOfMonth(subMonths(new Date(), 1))
-                          const end = endOfMonth(subMonths(new Date(), 1))
-                          setStartDate(format(start, 'yyyy-MM-dd'))
-                          setEndDate(format(end, 'yyyy-MM-dd'))
-                        }
+        <Card className="shadow-sm border-zinc-200 mb-6 bg-white">
+          <CardContent className="p-4 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 items-end">
+              {(activeTab === 'history' || activeTab === 'trends' || activeTab === 'prices') && (
+                <div className="space-y-1.5 lg:col-span-2">
+                  <Label>Período</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => {
+                        setStartDate(e.target.value)
+                        setActiveShortcut('')
                       }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Personalizado" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="1_week">1 Semana</SelectItem>
-                        <SelectItem value="30">Últimos 30 dias</SelectItem>
-                        <SelectItem value="last_month">Mês Passado</SelectItem>
-                      </SelectContent>
-                    </Select>
+                      className="w-full text-sm"
+                    />
+                    <span className="text-zinc-400">até</span>
+                    <Input
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => {
+                        setEndDate(e.target.value)
+                        setActiveShortcut('')
+                      }}
+                      className="w-full text-sm"
+                    />
                   </div>
-                )}
+                </div>
+              )}
 
-                {(activeTab === 'summary' ||
-                  activeTab === 'shopping' ||
-                  activeTab === 'trends' ||
-                  activeTab === 'history') && (
-                  <div className="space-y-1.5">
-                    <Label>Categoria</Label>
-                    <Select value={categoryId} onValueChange={setCategoryId}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Todas" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="_all_">Todas</SelectItem>
-                        {categories.map((c) => (
-                          <SelectItem key={c.id} value={c.id}>
-                            {c.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-
-                {activeTab === 'history' && (
-                  <div className="space-y-1.5">
-                    <Label>Funcionário</Label>
-                    <Select value={userId} onValueChange={setUserId}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Todos" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="_all_">Todos</SelectItem>
-                        {users.map((u) => (
-                          <SelectItem key={u.id} value={u.id}>
-                            {u.name || u.email}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-
+              {activeTab === 'trends' && (
                 <div className="space-y-1.5">
-                  <Label>Área</Label>
+                  <Label>Atalhos</Label>
                   <Select
-                    value={areaId}
+                    value={activeShortcut}
                     onValueChange={(val) => {
-                      setAreaId(val)
-                      setSubareaId('_all_')
+                      setActiveShortcut(val)
+                      if (val === '1_week') {
+                        setStartDate(format(subDays(new Date(), 7), 'yyyy-MM-dd'))
+                        setEndDate(format(new Date(), 'yyyy-MM-dd'))
+                      } else if (val === '30') {
+                        setStartDate(format(subDays(new Date(), 30), 'yyyy-MM-dd'))
+                        setEndDate(format(new Date(), 'yyyy-MM-dd'))
+                      } else if (val === 'last_month') {
+                        const start = startOfMonth(subMonths(new Date(), 1))
+                        const end = endOfMonth(subMonths(new Date(), 1))
+                        setStartDate(format(start, 'yyyy-MM-dd'))
+                        setEndDate(format(end, 'yyyy-MM-dd'))
+                      }
                     }}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Todas" />
+                      <SelectValue placeholder="Personalizado" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="_all_">Todas</SelectItem>
-                      {areas.map((a) => (
-                        <SelectItem key={a.id} value={a.id}>
-                          {a.name}
+                      <SelectItem value="1_week">1 Semana</SelectItem>
+                      <SelectItem value="30">Últimos 30 dias</SelectItem>
+                      <SelectItem value="last_month">Mês Passado</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Multi-seleção de Categorias - Disponível em TODAS as abas */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <Label>Categorias</Label>
+                  {selectedCategoryIds.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCategoryIds([])}
+                      className="text-xs text-zinc-400 hover:text-zinc-600 font-medium"
+                    >
+                      Limpar ({selectedCategoryIds.length})
+                    </button>
+                  )}
+                </div>
+                <Popover open={categoryPopoverOpen} onOpenChange={setCategoryPopoverOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={categoryPopoverOpen}
+                      className="w-full justify-between font-normal bg-white h-10 px-3 border-input"
+                    >
+                      <span className="truncate text-sm text-left">
+                        {selectedCategoryIds.length === 0 ? (
+                          <span className="text-zinc-700 font-normal">Todas as categorias</span>
+                        ) : selectedCategoryIds.length === 1 ? (
+                          (() => {
+                            const id = selectedCategoryIds[0]
+                            const cat = categories.find((c) => c.id === id)
+                            return cat?.name || id
+                          })()
+                        ) : (
+                          <span className="font-medium text-emerald-800">
+                            {selectedCategoryIds.length} selecionadas
+                          </span>
+                        )}
+                      </span>
+                      <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-80 p-0" align="start">
+                    <div className="p-2 border-b border-zinc-100 flex items-center justify-between bg-zinc-50/70">
+                      <span className="text-xs font-semibold text-zinc-600 uppercase tracking-wide">
+                        Filtrar por Categoria
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        {selectedCategoryIds.length > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedCategoryIds([])}
+                            className="text-xs text-emerald-700 hover:text-emerald-800 font-medium px-1.5 py-0.5 rounded hover:bg-emerald-50"
+                          >
+                            Limpar
+                          </button>
+                        ) : categories.length > 0 ? (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedCategoryIds(categories.map((c) => c.id))}
+                            className="text-xs text-emerald-700 hover:text-emerald-800 font-medium px-1.5 py-0.5 rounded hover:bg-emerald-50"
+                          >
+                            Marcar todas
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="max-h-64 overflow-y-auto p-1.5 space-y-0.5">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedCategoryIds([])}
+                        className={`w-full flex items-center justify-between px-2.5 py-2 text-sm rounded-md transition-colors text-left ${
+                          selectedCategoryIds.length === 0
+                            ? 'bg-emerald-50 text-emerald-900 font-medium'
+                            : 'text-zinc-700 hover:bg-zinc-100'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <Checkbox
+                            checked={selectedCategoryIds.length === 0}
+                            onCheckedChange={() => setSelectedCategoryIds([])}
+                          />
+                          <span>Todas as categorias</span>
+                        </div>
+                        {selectedCategoryIds.length === 0 && (
+                          <Check className="w-4 h-4 text-emerald-600" />
+                        )}
+                      </button>
+
+                      <div className="my-1 border-t border-zinc-100" />
+
+                      {categories.map((c) => {
+                        const isChecked = selectedCategoryIds.includes(c.id)
+                        return (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedCategoryIds((prev) =>
+                                prev.includes(c.id)
+                                  ? prev.filter((id) => id !== c.id)
+                                  : [...prev, c.id],
+                              )
+                            }}
+                            className={`w-full flex items-center justify-between px-2.5 py-2 text-sm rounded-md transition-colors text-left ${
+                              isChecked
+                                ? 'bg-emerald-50/70 text-emerald-900 font-medium'
+                                : 'text-zinc-700 hover:bg-zinc-100'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0 pr-2">
+                              <Checkbox
+                                checked={isChecked}
+                                onCheckedChange={() => {
+                                  setSelectedCategoryIds((prev) =>
+                                    prev.includes(c.id)
+                                      ? prev.filter((id) => id !== c.id)
+                                      : [...prev, c.id],
+                                  )
+                                }}
+                              />
+                              <span className="truncate">{c.name}</span>
+                            </div>
+                            {isChecked && <Check className="w-4 h-4 text-emerald-600 shrink-0" />}
+                          </button>
+                        )
+                      })}
+                    </div>
+
+                    {selectedCategoryIds.length > 0 && (
+                      <div className="p-2 border-t border-zinc-100 bg-zinc-50/50 flex items-center justify-between">
+                        <span className="text-xs text-zinc-500">
+                          {selectedCategoryIds.length} selecionada(s)
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="default"
+                          className="h-7 text-xs bg-emerald-700 hover:bg-emerald-800"
+                          onClick={() => setCategoryPopoverOpen(false)}
+                        >
+                          Aplicar
+                        </Button>
+                      </div>
+                    )}
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              {activeTab === 'history' && (
+                <div className="space-y-1.5">
+                  <Label>Funcionário</Label>
+                  <Select value={userId} onValueChange={setUserId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Todos" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_all_">Todos</SelectItem>
+                      {users.map((u) => (
+                        <SelectItem key={u.id} value={u.id}>
+                          {u.name || u.email}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
+              )}
 
-                <div className="space-y-1.5">
-                  <Label>Subárea</Label>
-                  <Select
-                    value={subareaId}
-                    onValueChange={setSubareaId}
-                    disabled={areaId === '_all_'}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Todas" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="_all_">Todas</SelectItem>
-                      {subareas
-                        .filter((s) => s.area_id === areaId)
-                        .map((s) => (
-                          <SelectItem key={s.id} value={s.id}>
-                            {s.name}
+              {activeTab !== 'cmv' && activeTab !== 'financial' && (
+                <>
+                  <div className="space-y-1.5">
+                    <Label>Área</Label>
+                    <Select
+                      value={areaId}
+                      onValueChange={(val) => {
+                        setAreaId(val)
+                        setSubareaId('_all_')
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Todas" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="_all_">Todas</SelectItem>
+                        {areas.map((a) => (
+                          <SelectItem key={a.id} value={a.id}>
+                            {a.name}
                           </SelectItem>
                         ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
+                      </SelectContent>
+                    </Select>
+                  </div>
 
+                  <div className="space-y-1.5">
+                    <Label>Subárea</Label>
+                    <Select
+                      value={subareaId}
+                      onValueChange={setSubareaId}
+                      disabled={areaId === '_all_'}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Todas" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="_all_">Todas</SelectItem>
+                        {subareas
+                          .filter((s) => s.area_id === areaId)
+                          .map((s) => (
+                            <SelectItem key={s.id} value={s.id}>
+                              {s.name}
+                            </SelectItem>
+                          ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Chips de categorias selecionadas */}
+            {selectedCategoryIds.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-zinc-100">
+                <span className="text-xs text-zinc-500 mr-1">Categorias filtradas:</span>
+                {selectedCategoryIds.map((id) => {
+                  const cat = categories.find((c) => c.id === id)
+                  const name = cat?.name || id
+                  return (
+                    <Badge
+                      key={id}
+                      variant="secondary"
+                      className="bg-emerald-50 text-emerald-800 border border-emerald-200/80 hover:bg-emerald-100/70 text-xs font-normal pl-2 pr-1 py-0.5 flex items-center gap-1"
+                    >
+                      <span className="max-w-[160px] truncate">{name}</span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setSelectedCategoryIds((prev) => prev.filter((item) => item !== id))
+                        }
+                        className="rounded-full p-0.5 hover:bg-emerald-200/60 text-emerald-700"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </Badge>
+                  )
+                })}
+                <button
+                  type="button"
+                  onClick={() => setSelectedCategoryIds([])}
+                  className="text-xs text-zinc-400 hover:text-zinc-600 underline ml-1"
+                >
+                  Remover todas
+                </button>
+              </div>
+            )}
+
+            {activeTab !== 'cmv' && activeTab !== 'financial' && (
               <div className="flex items-center justify-between gap-4 border-t border-zinc-100 pt-4 mt-2">
                 <div className="relative flex-1 max-w-sm">
                   <Search className="absolute left-3 top-2.5 h-4 w-4 text-zinc-400" />
@@ -1024,9 +1212,9 @@ export default function Reports() {
                   <FilterX className="h-4 w-4 mr-2" /> Limpar
                 </Button>
               </div>
-            </CardContent>
-          </Card>
-        )}
+            )}
+          </CardContent>
+        </Card>
 
         {/* HISTÓRICO TAB */}
         <TabsContent value="history" className="space-y-6">
@@ -1643,6 +1831,11 @@ export default function Reports() {
                           !selectedCostCategories.includes(p.cost_category || 'CMV')
                         )
                           return false
+                        if (
+                          selectedCategoryIds.length > 0 &&
+                          (!p.category_id || !selectedCategoryIds.includes(p.category_id))
+                        )
+                          return false
                         return true
                       })
                       if (filteredProducts.length === 0) {
@@ -1722,11 +1915,11 @@ export default function Reports() {
         </TabsContent>
 
         <TabsContent value="cmv">
-          <CmvReport />
+          <CmvReport selectedCategoryIds={selectedCategoryIds} />
         </TabsContent>
 
         <TabsContent value="financial">
-          <FinancialDashboard />
+          <FinancialDashboard selectedCategoryIds={selectedCategoryIds} />
         </TabsContent>
       </Tabs>
 

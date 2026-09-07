@@ -45,7 +45,11 @@ const PIE_COLORS = [
 
 const safeDate = (s: string) => new Date(s.split(' ')[0])
 
-export function FinancialDashboard() {
+interface FinancialDashboardProps {
+  selectedCategoryIds?: string[]
+}
+
+export function FinancialDashboard({ selectedCategoryIds = [] }: FinancialDashboardProps) {
   const [period, setPeriod] = useState<PeriodRange>({ start: '', end: '' })
   const [selectedCategories, setSelectedCategories] = useState<string[]>(['CMV'])
   const [loading, setLoading] = useState(true)
@@ -69,7 +73,17 @@ export function FinancialDashboard() {
 
     return COST_CATEGORIES.filter((cat) => selectedCategories.includes(cat))
       .map((cat) => {
-        const catProducts = products.filter((p) => (p.cost_category || 'CMV') === cat)
+        let catProducts = products.filter((p) => (p.cost_category || 'CMV') === cat)
+        if (selectedCategoryIds.length > 0) {
+          catProducts = catProducts.filter((p) => {
+            const matchStandard = p.category_id
+              ? selectedCategoryIds.includes(p.category_id)
+              : false
+            const costCat = p.cost_category ? `cost:${p.cost_category}` : undefined
+            const matchCost = costCat ? selectedCategoryIds.includes(costCat) : false
+            return matchStandard || matchCost
+          })
+        }
         const catProductIds = new Set(catProducts.map((p) => p.id))
         const catCompras = compras.filter((c) => {
           if (!catProductIds.has(c.product_id)) return false
@@ -88,7 +102,7 @@ export function FinancialDashboard() {
         return { category: cat, total, productBreakdown }
       })
       .filter((item) => item.total > 0 || item.productBreakdown.length > 0)
-  }, [products, compras, period, selectedCategories])
+  }, [products, compras, period, selectedCategories, selectedCategoryIds])
 
   const barData = categoryData.map((d) => ({ name: d.category, total: d.total }))
   const pieData = categoryData.map((d, i) => ({

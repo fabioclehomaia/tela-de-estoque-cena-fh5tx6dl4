@@ -2,9 +2,19 @@ import { useState, useEffect } from 'react'
 import { CountableItem } from '@/types/inventory'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { AlertTriangle, ImageIcon, MinusCircle } from 'lucide-react'
+import { AlertTriangle, ImageIcon, MinusCircle, Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import pb from '@/lib/pocketbase/client'
+import { format, parseISO } from 'date-fns'
+
+const formatLastCountDate = (dateStr: string) => {
+  try {
+    const d = parseISO(dateStr.replace(' ', 'T'))
+    return format(d, 'dd/MM/yyyy')
+  } catch {
+    return dateStr
+  }
+}
 
 interface ProductCardProps {
   item: CountableItem
@@ -59,6 +69,17 @@ export function ProductCard({ item, onUpdate, disabled }: ProductCardProps) {
         <div className="flex flex-col gap-1.5 justify-center">
           <span className="font-semibold text-zinc-900 leading-tight">{item.name}</span>
           <span className="text-xs text-zinc-500">Unidade: {item.unit}</span>
+          <div className="text-[11px] text-zinc-400 flex items-center gap-1">
+            <Clock className="w-3 h-3 text-zinc-400 shrink-0" />
+            {item.lastCount ? (
+              <span>
+                Última contagem: {formatLastCountDate(item.lastCount.date)} por{' '}
+                <span className="text-zinc-600 font-medium">{item.lastCount.userName}</span>
+              </span>
+            ) : (
+              <span>Nunca contado</span>
+            )}
+          </div>
           {(isLowStock || item.actualQty === 0) && (
             <div className="flex flex-wrap gap-2 mt-1">
               {item.actualQty === 0 && (

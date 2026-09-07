@@ -1,3 +1,8 @@
+export interface LastCountInfo {
+  date: string
+  userName: string
+}
+
 export interface CountableItem {
   id: string
   productId: string
@@ -10,4 +15,5 @@ export interface CountableItem {
   minStock: number | null
   image?: string
   productObj?: any
+  lastCount?: LastCountInfo | null
 }
