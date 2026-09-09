@@ -27,6 +27,7 @@ interface InventoryAreaProps {
   onComplete: () => void
   userRole?: string
   subareas: Subarea[]
+  showLastCount?: boolean
   onSaveOrder: (
     orders: Array<{ product_id: string; subarea_id: string; sort_order: number }>,
   ) => Promise<void>
@@ -40,6 +41,8 @@ export function InventoryArea({
   onUpdate,
   onComplete,
   userRole,
+  subareas,
+  showLastCount = true,
   onSaveOrder,
 }: InventoryAreaProps) {
   const [showSummary, setShowSummary] = useState(false)
@@ -268,6 +271,7 @@ export function InventoryArea({
               isHighlighted={highlightIndex === index}
               onUpdate={onUpdate}
               disabled={isCompleted || submitting || isSavingOrder}
+              showLastCount={showLastCount}
               onMoveUp={() => handleMoveUp(index)}
               onMoveDown={() => handleMoveDown(index)}
             />

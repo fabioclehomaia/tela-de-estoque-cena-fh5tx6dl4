@@ -166,17 +166,18 @@ export default function Index() {
     }
   }, [availableCategories, selectedCategoryIds])
 
-  // Mapa da última contagem realizada para cada produto
-  const latestCountByProduct = useMemo(() => {
+  // Mapa da última contagem realizada por produto e localização específica (subárea)
+  const latestCountByProductAndSubarea = useMemo(() => {
     const map = new Map<string, LastCountInfo>()
     // Como getInventoryCounts já retorna ordenado por -created (ou checamos por data)
     for (const count of inventoryCounts) {
-      if (!count.product_id) continue
-      const existing = map.get(count.product_id)
+      if (!count.product_id || !count.subarea_id) continue
+      const key = `${count.product_id}_${count.subarea_id}`
+      const existing = map.get(key)
       if (!existing || new Date(count.created) > new Date(existing.date)) {
         const userName =
           count.expand?.user_id?.name || count.expand?.user_id?.email?.split('@')[0] || 'Usuário'
-        map.set(count.product_id, {
+        map.set(key, {
           date: count.created,
           userName,
         })
@@ -184,6 +185,9 @@ export default function Index() {
     }
     return map
   }, [inventoryCounts])
+
+  // A última contagem deve ser exibida apenas quando o usuário selecionar uma área específica
+  const hasSpecificAreaSelected = selectedAreaId !== '_all_'
 
   const allItems = useMemo<CountableItem[]>(() => {
     const productMap = new Map(products.map((p) => [p.id, p]))
@@ -198,6 +202,11 @@ export default function Index() {
       if (!subarea) return
 
       const itemId = `${level.product_id}_${level.subarea_id}`
+      const locationKey = `${level.product_id}_${level.subarea_id}`
+      const lastCount = hasSpecificAreaSelected
+        ? latestCountByProductAndSubarea.get(locationKey) || null
+        : null
+
       items.push({
         id: itemId,
         productId: level.product_id,
@@ -210,12 +219,19 @@ export default function Index() {
         minStock: product.min_stock ?? null,
         image: product.image,
         productObj: product,
-        lastCount: latestCountByProduct.get(level.product_id) || null,
+        lastCount,
       })
     })
 
     return items
-  }, [levels, products, subareas, countState, latestCountByProduct])
+  }, [
+    levels,
+    products,
+    subareas,
+    countState,
+    latestCountByProductAndSubarea,
+    hasSpecificAreaSelected,
+  ])
 
   const orderMap = useMemo(() => {
     const map = new Map<string, number>()
@@ -668,6 +684,7 @@ export default function Index() {
                 onComplete={() => handleComplete(group.areaId)}
                 userRole={user?.role}
                 subareas={subareas}
+                showLastCount={hasSpecificAreaSelected}
                 onSaveOrder={handleSaveOrder}
               />
             </div>

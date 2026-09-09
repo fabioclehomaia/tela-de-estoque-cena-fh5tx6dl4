@@ -11,6 +11,7 @@ interface ReorderableProductRowProps {
   isHighlighted: boolean
   onUpdate: (id: string, qty: number | null) => void
   disabled?: boolean
+  showLastCount?: boolean
   onMoveUp: () => void
   onMoveDown: () => void
 }
@@ -23,6 +24,7 @@ export function ReorderableProductRow({
   isHighlighted,
   onUpdate,
   disabled,
+  showLastCount = true,
   onMoveUp,
   onMoveDown,
 }: ReorderableProductRowProps) {
@@ -66,7 +68,12 @@ export function ReorderableProductRow({
           </div>
         )}
         <div className="flex-1 min-w-0">
-          <ProductCard item={item} onUpdate={onUpdate} disabled={disabled} />
+          <ProductCard
+            item={item}
+            onUpdate={onUpdate}
+            disabled={disabled}
+            showLastCount={showLastCount}
+          />
         </div>
       </div>
     </div>

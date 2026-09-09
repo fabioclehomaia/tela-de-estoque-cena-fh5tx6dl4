@@ -20,9 +20,10 @@ interface ProductCardProps {
   item: CountableItem
   onUpdate: (id: string, qty: number | null) => void
   disabled?: boolean
+  showLastCount?: boolean
 }
 
-export function ProductCard({ item, onUpdate, disabled }: ProductCardProps) {
+export function ProductCard({ item, onUpdate, disabled, showLastCount = true }: ProductCardProps) {
   const [localVal, setLocalVal] = useState(item.actualQty?.toString() ?? '')
 
   useEffect(() => {
@@ -69,17 +70,19 @@ export function ProductCard({ item, onUpdate, disabled }: ProductCardProps) {
         <div className="flex flex-col gap-1.5 justify-center">
           <span className="font-semibold text-zinc-900 leading-tight">{item.name}</span>
           <span className="text-xs text-zinc-500">Unidade: {item.unit}</span>
-          <div className="text-[11px] text-zinc-400 flex items-center gap-1">
-            <Clock className="w-3 h-3 text-zinc-400 shrink-0" />
-            {item.lastCount ? (
-              <span>
-                Última contagem: {formatLastCountDate(item.lastCount.date)} por{' '}
-                <span className="text-zinc-600 font-medium">{item.lastCount.userName}</span>
-              </span>
-            ) : (
-              <span>Nunca contado</span>
-            )}
-          </div>
+          {showLastCount && (
+            <div className="text-[11px] text-zinc-400 flex items-center gap-1">
+              <Clock className="w-3 h-3 text-zinc-400 shrink-0" />
+              {item.lastCount ? (
+                <span>
+                  Última contagem: {formatLastCountDate(item.lastCount.date)} por{' '}
+                  <span className="text-zinc-600 font-medium">{item.lastCount.userName}</span>
+                </span>
+              ) : (
+                <span>Nunca contado</span>
+              )}
+            </div>
+          )}
           {(isLowStock || item.actualQty === 0) && (
             <div className="flex flex-wrap gap-2 mt-1">
               {item.actualQty === 0 && (
