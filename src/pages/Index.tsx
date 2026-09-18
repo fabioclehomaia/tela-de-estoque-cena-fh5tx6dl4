@@ -186,9 +186,6 @@ export default function Index() {
     return map
   }, [inventoryCounts])
 
-  // A última contagem deve ser exibida apenas quando o usuário selecionar uma área específica
-  const hasSpecificAreaSelected = selectedAreaId !== '_all_'
-
   const allItems = useMemo<CountableItem[]>(() => {
     const productMap = new Map(products.map((p) => [p.id, p]))
     const items: CountableItem[] = []
@@ -203,9 +200,7 @@ export default function Index() {
 
       const itemId = `${level.product_id}_${level.subarea_id}`
       const locationKey = `${level.product_id}_${level.subarea_id}`
-      const lastCount = hasSpecificAreaSelected
-        ? latestCountByProductAndSubarea.get(locationKey) || null
-        : null
+      const lastCount = latestCountByProductAndSubarea.get(locationKey) || null
 
       items.push({
         id: itemId,
@@ -224,14 +219,7 @@ export default function Index() {
     })
 
     return items
-  }, [
-    levels,
-    products,
-    subareas,
-    countState,
-    latestCountByProductAndSubarea,
-    hasSpecificAreaSelected,
-  ])
+  }, [levels, products, subareas, countState, latestCountByProductAndSubarea])
 
   const orderMap = useMemo(() => {
     const map = new Map<string, number>()
@@ -684,7 +672,7 @@ export default function Index() {
                 onComplete={() => handleComplete(group.areaId)}
                 userRole={user?.role}
                 subareas={subareas}
-                showLastCount={hasSpecificAreaSelected}
+                showLastCount={true}
                 onSaveOrder={handleSaveOrder}
               />
             </div>

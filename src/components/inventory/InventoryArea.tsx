@@ -46,7 +46,7 @@ export function InventoryArea({
   onSaveOrder,
 }: InventoryAreaProps) {
   const [showSummary, setShowSummary] = useState(false)
-  const [showMissing, setShowMissing] = useState(false)
+  const [showMissingConfirm, setShowMissingConfirm] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [localItems, setLocalItems] = useState<CountableItem[]>(items)
   const [isReordering, setIsReordering] = useState(false)
@@ -176,13 +176,19 @@ export function InventoryArea({
   }
 
   const handleFinalizeClick = () => {
-    if (!allCounted) {
-      setShowMissing(true)
-      toast.error(
-        `Há ${missingItems.length} produto(s) sem preenchimento. Preencha ou zere antes de finalizar.`,
-      )
+    if (countedCount === 0) {
+      toast.error('Preencha a contagem de pelo menos 1 produto antes de finalizar.')
       return
     }
+    if (!allCounted) {
+      setShowMissingConfirm(true)
+      return
+    }
+    setShowSummary(true)
+  }
+
+  const handleProceedWithPartial = () => {
+    setShowMissingConfirm(false)
     setShowSummary(true)
   }
 
@@ -209,49 +215,46 @@ export function InventoryArea({
 
   return (
     <div className="space-y-4">
+      {/* Barra superior de status e opções (sem o botão finalizar, apenas progresso e reordenar) */}
       <div className="flex items-center justify-between gap-4 bg-white p-4 rounded-xl border border-zinc-100 shadow-sm">
         <div className="flex flex-col gap-1.5 flex-1">
-          <span className="text-sm font-medium text-zinc-700">
-            {countedCount} de {totalCount} produtos contados
-          </span>
+          <div className="flex items-center justify-between text-sm">
+            <span className="font-medium text-zinc-700">
+              {countedCount} de {totalCount} produtos preenchidos
+            </span>
+            <span className="text-xs text-zinc-500">{progress.toFixed(0)}% concluído</span>
+          </div>
           <Progress value={progress} className="h-2" />
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {canReorder && !isReordering && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleStartReordering}
-              disabled={isCompleted || submitting}
-            >
-              <ArrowUpDown className="w-4 h-4 mr-2" />
-              Reordenar
-            </Button>
-          )}
-          {canReorder && isReordering && (
-            <Button size="sm" onClick={handleFinishReordering} disabled={isSavingOrder}>
-              {isSavingOrder ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Salvando...
-                </>
-              ) : (
-                <>
-                  <ClipboardCheck className="w-4 h-4 mr-2" />
-                  Concluir
-                </>
-              )}
-            </Button>
-          )}
-          <Button
-            className="bg-emerald-600 hover:bg-emerald-700"
-            disabled={submitting || isCompleted || isReordering}
-            onClick={handleFinalizeClick}
-          >
-            <ClipboardCheck className="w-4 h-4 mr-2" />
-            Finalizar
-          </Button>
-        </div>
+        {canReorder && (
+          <div className="flex items-center gap-2 shrink-0">
+            {!isReordering ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleStartReordering}
+                disabled={isCompleted || submitting}
+              >
+                <ArrowUpDown className="w-4 h-4 mr-2" />
+                Reordenar
+              </Button>
+            ) : (
+              <Button size="sm" onClick={handleFinishReordering} disabled={isSavingOrder}>
+                {isSavingOrder ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Salvando...
+                  </>
+                ) : (
+                  <>
+                    <ClipboardCheck className="w-4 h-4 mr-2" />
+                    Concluir ordem
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
       <div ref={containerRef}>
@@ -279,47 +282,86 @@ export function InventoryArea({
         })}
       </div>
 
+      {/* Bloco de Finalização MOVIDO para ABAIXO da lista de produtos */}
+      <div className="bg-white p-4 rounded-xl border border-zinc-200/80 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4 mt-4">
+        <div className="text-sm text-zinc-600">
+          <p className="font-semibold text-zinc-800">
+            {countedCount} de {totalCount} produto(s) preenchidos nesta área
+          </p>
+          <p className="text-xs text-zinc-500">
+            {allCounted
+              ? 'Todos os produtos foram preenchidos. Pronto para finalizar.'
+              : `${missingItems.length} produto(s) ainda não foram preenchidos. Você pode finalizar parcialmente se desejar.`}
+          </p>
+        </div>
+
+        <Button
+          size="lg"
+          className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 font-semibold px-6"
+          disabled={submitting || isCompleted || isReordering || countedCount === 0}
+          onClick={handleFinalizeClick}
+        >
+          <ClipboardCheck className="w-5 h-5 mr-2" />
+          Finalizar Contagem
+        </Button>
+      </div>
+
       <SummaryModal
         open={showSummary}
         onOpenChange={setShowSummary}
         items={countedItems}
+        missingCount={missingItems.length}
         onConfirm={handleSubmit}
         submitting={submitting}
       />
 
-      <AlertDialog open={showMissing} onOpenChange={setShowMissing}>
+      {/* Diálogo de confirmação para contagem parcial */}
+      <AlertDialog open={showMissingConfirm} onOpenChange={setShowMissingConfirm}>
         <AlertDialogContent className="max-w-md">
           <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-amber-500" />
-              Não é possível finalizar a contagem
+            <AlertDialogTitle className="flex items-center gap-2 text-amber-700">
+              <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
+              Finalizar contagem parcial?
             </AlertDialogTitle>
             <AlertDialogDescription asChild>
-              <div>
-                <p className="mb-2">
-                  Os seguintes produtos precisam ser preenchidos ou zerados antes de finalizar:
+              <div className="space-y-2 text-zinc-600">
+                <p>
+                  Atenção:{' '}
+                  <strong className="text-zinc-900">{missingItems.length} produto(s)</strong> desta
+                  área não foram contabilizados nesta contagem.
                 </p>
-                <ScrollArea className="max-h-[260px] rounded-md border border-zinc-100">
+                <p className="text-xs text-zinc-500">
+                  Apenas os <strong>{countedCount} produto(s)</strong> preenchidos serão salvos no
+                  histórico. Os produtos abaixo ficarão sem contagem atualizada:
+                </p>
+                <ScrollArea className="max-h-[200px] rounded-md border border-zinc-200 bg-zinc-50/50">
                   <ul className="p-3 space-y-1">
                     {missingItems.map((item) => (
                       <li
                         key={item.id}
-                        className="text-sm font-medium text-zinc-800 flex justify-between gap-2 py-1 border-b border-zinc-100 last:border-0"
+                        className="text-xs font-medium text-zinc-700 flex justify-between gap-2 py-1 border-b border-zinc-100 last:border-0"
                       >
                         <span className="truncate">{item.name}</span>
-                        <span className="text-zinc-400 text-xs whitespace-nowrap">
-                          {item.subareaName}
-                        </span>
+                        <span className="text-zinc-400 whitespace-nowrap">{item.subareaName}</span>
                       </li>
                     ))}
                   </ul>
                 </ScrollArea>
+                <p className="text-xs font-medium text-amber-800 bg-amber-50 p-2 rounded border border-amber-200">
+                  Deseja finalizar a contagem mesmo com produtos pendentes?
+                </p>
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogAction className="bg-emerald-600 hover:bg-emerald-700">
-              Entendi
+            <Button variant="outline" onClick={() => setShowMissingConfirm(false)}>
+              Voltar e preencher
+            </Button>
+            <AlertDialogAction
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              onClick={handleProceedWithPartial}
+            >
+              Sim, finalizar parcial
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

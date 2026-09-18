@@ -19,10 +19,20 @@ interface SummaryModalProps {
   submitting: boolean
 }
 
+interface SummaryModalProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  items: CountableItem[]
+  missingCount?: number
+  onConfirm: () => void
+  submitting: boolean
+}
+
 export function SummaryModal({
   open,
   onOpenChange,
   items,
+  missingCount = 0,
   onConfirm,
   submitting,
 }: SummaryModalProps) {
@@ -31,7 +41,11 @@ export function SummaryModal({
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Resumo da Contagem</DialogTitle>
-          <DialogDescription>Confira os valores antes de finalizar a contagem.</DialogDescription>
+          <DialogDescription>
+            {missingCount > 0
+              ? `Serão salvos ${items.length} produto(s) contados. ${missingCount} produto(s) não foram contabilizados.`
+              : 'Confira os valores antes de finalizar a contagem.'}
+          </DialogDescription>
         </DialogHeader>
         <ScrollArea className="max-h-[400px] rounded-md border border-zinc-100">
           <div className="p-4 space-y-1">

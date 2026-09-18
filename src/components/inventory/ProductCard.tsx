@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { CountableItem } from '@/types/inventory'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { AlertTriangle, ImageIcon, MinusCircle, Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import pb from '@/lib/pocketbase/client'
-import { format, parseISO } from 'date-fns'
+import { format, parseISO, differenceInCalendarDays } from 'date-fns'
 
 const formatLastCountDate = (dateStr: string) => {
   try {
@@ -13,6 +13,57 @@ const formatLastCountDate = (dateStr: string) => {
     return format(d, 'dd/MM/yyyy')
   } catch {
     return dateStr
+  }
+}
+
+/**
+ * Avalia o status de tempo desde a última contagem:
+ * - 'red' (vermelho): mais de 7 dias sem contagem ou nunca contado (risco na semana)
+ * - 'green' (verde): 6 a 7 dias sem contagem (atenção para não virar a semana sem contagem)
+ * - 'recent' (neutro): contado há menos de 6 dias (contagem recente em dia)
+ */
+export function getCountRecencyStatus(lastCountDateStr?: string | null): {
+  status: 'red' | 'green' | 'recent'
+  label: string
+  days: number | null
+} {
+  if (!lastCountDateStr) {
+    return {
+      status: 'red',
+      label: 'Nunca contado nesta subárea (+7 dias)',
+      days: null,
+    }
+  }
+
+  try {
+    const lastDate = parseISO(lastCountDateStr.replace(' ', 'T'))
+    const days = differenceInCalendarDays(new Date(), lastDate)
+
+    if (days > 7) {
+      return {
+        status: 'red',
+        label: `Sem contagem há ${days} dias (+7 dias)`,
+        days,
+      }
+    }
+    if (days >= 6) {
+      return {
+        status: 'green',
+        label: `Sem contagem há ${days} dias (atenção para a semana)`,
+        days,
+      }
+    }
+    return {
+      status: 'recent',
+      label: days === 0 ? 'Contado hoje' : `Contado há ${days} dia(s)`,
+      days,
+    }
+  } catch {
+    return {
+      status: 'red',
+      label: 'Data de contagem indefinida',
+      days: null,
+    }
   }
 }
 
@@ -46,10 +97,18 @@ export function ProductCard({ item, onUpdate, disabled, showLastCount = true }: 
   const isLowStock =
     item.minStock !== null && item.actualQty !== null && item.actualQty < item.minStock
 
+  const recency = useMemo(() => {
+    return getCountRecencyStatus(item.lastCount?.date)
+  }, [item.lastCount?.date])
+
   return (
     <div
       className={cn(
-        'flex items-start justify-between p-4 bg-white border border-zinc-100 rounded-xl shadow-subtle mb-3 transition-colors',
+        'flex items-start justify-between p-4 bg-white border rounded-xl shadow-subtle mb-3 transition-all',
+        recency.status === 'red' && 'border-l-4 border-l-red-500 border-zinc-200/80 bg-red-50/20',
+        recency.status === 'green' &&
+          'border-l-4 border-l-emerald-500 border-zinc-200/80 bg-emerald-50/20',
+        recency.status === 'recent' && 'border-zinc-100',
         disabled && 'opacity-60 bg-zinc-50/50',
       )}
     >
@@ -71,7 +130,7 @@ export function ProductCard({ item, onUpdate, disabled, showLastCount = true }: 
           <span className="font-semibold text-zinc-900 leading-tight">{item.name}</span>
           <span className="text-xs text-zinc-500">Unidade: {item.unit}</span>
           {showLastCount && (
-            <div className="text-[11px] text-zinc-400 flex items-center gap-1">
+            <div className="text-[11px] text-zinc-400 flex items-center gap-1.5 flex-wrap">
               <Clock className="w-3 h-3 text-zinc-400 shrink-0" />
               {item.lastCount ? (
                 <span>
@@ -79,7 +138,26 @@ export function ProductCard({ item, onUpdate, disabled, showLastCount = true }: 
                   <span className="text-zinc-600 font-medium">{item.lastCount.userName}</span>
                 </span>
               ) : (
-                <span>Nunca contado</span>
+                <span className="text-red-600 font-medium">Nunca contado</span>
+              )}
+
+              {recency.status === 'red' && (
+                <span
+                  title={recency.label}
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-red-100 text-red-700 border border-red-200"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />
+                  +7 dias sem contagem
+                </span>
+              )}
+              {recency.status === 'green' && (
+                <span
+                  title={recency.label}
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                  6-7 dias sem contagem
+                </span>
               )}
             </div>
           )}
