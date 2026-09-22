@@ -7,6 +7,8 @@ import {
   FilterX,
   TrendingDown,
   Calendar as CalendarIcon,
+  Scale,
+  Package,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -37,6 +39,14 @@ import { calculateCMV } from '@/lib/cmv-utils'
 
 const formatCurrency = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
+
+const formatQuantity = (val: number, unit?: string) => {
+  const formatted = new Intl.NumberFormat('pt-BR', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(val)
+  return unit ? `${formatted} ${unit}` : formatted
+}
 
 const safeDate = (s: string) => new Date(s.split(' ')[0])
 
@@ -139,6 +149,33 @@ export function CmvReport({ selectedCategoryIds = [] }: CmvReportProps) {
   const displayedCMVTotal = useMemo(() => {
     return displayedBreakdown.reduce((sum, b) => sum + b.cmv, 0)
   }, [displayedBreakdown])
+
+  // Agrupamento do consumo físico por unidade de medida (kg, litro, unidade, etc.)
+  const consumptionByUnit = useMemo(() => {
+    const unitMap = new Map<string, { total: number; count: number }>()
+
+    displayedBreakdown.forEach((b) => {
+      const unit = b.product.unit || 'unidade'
+      const current = unitMap.get(unit) || { total: 0, count: 0 }
+      unitMap.set(unit, {
+        total: current.total + (b.consumoQtd || 0),
+        count: current.count + 1,
+      })
+    })
+
+    return Array.from(unitMap.entries())
+      .map(([unit, data]) => ({
+        unit,
+        total: data.total,
+        count: data.count,
+      }))
+      .sort((a, b) => b.total - a.total)
+  }, [displayedBreakdown])
+
+  // Identifica se há filtro de produto único na busca
+  const isSingleProductView = useMemo(() => {
+    return Boolean(productSearch.trim()) && displayedBreakdown.length === 1
+  }, [productSearch, displayedBreakdown])
 
   const faturamento = useMemo(() => {
     if (!startDate || !endDate) return null
@@ -265,7 +302,7 @@ export function CmvReport({ selectedCategoryIds = [] }: CmvReportProps) {
         </div>
       ) : (
         <>
-          {/* Card em destaque com o VOLUME GASTO NO PERÍODO */}
+          {/* Card em destaque com o VOLUME GASTO NO PERÍODO (Monetário + Físico) */}
           <Card className="bg-gradient-to-br from-emerald-900 to-emerald-800 text-white shadow-md border-0 overflow-hidden relative">
             <div className="p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div className="space-y-1">
@@ -274,7 +311,7 @@ export function CmvReport({ selectedCategoryIds = [] }: CmvReportProps) {
                     <TrendingDown className="w-5 h-5" />
                   </div>
                   <span className="text-sm font-semibold uppercase tracking-wider text-emerald-200">
-                    Volume Gasto no Período (CMV)
+                    Volume Gasto no Período (CMV Total)
                   </span>
                 </div>
                 <h2 className="text-3xl md:text-4xl font-extrabold tracking-tight">
@@ -285,41 +322,134 @@ export function CmvReport({ selectedCategoryIds = [] }: CmvReportProps) {
                   {filteredProductsCount(categoryFilteredProducts.length)}
                 </p>
               </div>
-
+              {/* Informação do filtro ativo (se houver busca por produto) */}
               {productSearch && (
-                <div className="bg-white/10 border border-white/20 rounded-lg p-3 text-right">
-                  <span className="text-xs text-emerald-200 block">Gasto do produto filtrado</span>
-                  <span className="text-xl font-bold text-white">
+                <div className="bg-white/10 border border-white/20 rounded-lg p-3 text-left md:text-right space-y-1">
+                  <span className="text-xs text-emerald-200 block font-medium">
+                    Filtro de busca: "{productSearch}"
+                  </span>
+                  <span className="text-xl font-bold text-white block">
                     {formatCurrency(displayedCMVTotal)}
                   </span>
+                  {isSingleProductView ? (
+                    <span className="text-xs font-semibold text-emerald-100 bg-emerald-700/60 border border-emerald-400/40 px-2.5 py-1 rounded inline-block">
+                      Consumo físico:{' '}
+                      <span className="text-white font-bold">
+                        {formatQuantity(
+                          displayedBreakdown[0].consumoQtd,
+                          displayedBreakdown[0].product.unit,
+                        )}
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="text-xs text-emerald-200 block">
+                      {displayedBreakdown.length} produto(s) correspondente(s)
+                    </span>
+                  )}
                 </div>
-              )}
+              )}{' '}
+            </div>
+
+            {/* Faixa integrada: Consumo Físico Real Agrupado por Unidade */}
+            <div className="bg-black/20 border-t border-white/10 px-6 py-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-xs font-semibold text-emerald-200 uppercase tracking-wider">
+                  <Scale className="w-4 h-4 shrink-0" />
+                  <span>
+                    {productSearch
+                      ? 'Consumo Físico dos Produtos Filtrados:'
+                      : 'Consumo Físico no Período (por unidade de medida):'}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {consumptionByUnit.length === 0 ? (
+                    <span className="text-xs text-emerald-100/70">Nenhum consumo registrado</span>
+                  ) : (
+                    consumptionByUnit.map((item) => (
+                      <span
+                        key={item.unit}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/20 text-white text-xs font-semibold backdrop-blur-sm border border-white/15"
+                      >
+                        <Package className="w-3 h-3 text-emerald-300 shrink-0" />
+                        <span>{formatQuantity(item.total, item.unit)}</span>
+                        <span className="text-[10px] text-emerald-200/80 font-normal">
+                          ({item.count} {item.count === 1 ? 'produto' : 'produtos'})
+                        </span>
+                      </span>
+                    ))
+                  )}
+                </div>
+              </div>
             </div>
           </Card>
 
-          {/* Grid de Balanço de Estoque */}
+          {/* Resumo de Consumo Físico por Unidade de Medida */}
+          <Card className="border-emerald-200/70 bg-emerald-50/30">
+            <CardHeader className="pb-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <CardTitle className="text-base font-semibold text-emerald-950 flex items-center gap-2">
+                  <Scale className="w-4 h-4 text-emerald-700" />
+                  Volume Físico Consumido no Período
+                </CardTitle>
+                <span className="text-xs text-zinc-500">
+                  EI + Compras - EF por unidade de medida
+                </span>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {consumptionByUnit.length === 0 ? (
+                  <div className="col-span-full text-sm text-zinc-500 py-2">
+                    Nenhum produto com consumo calculado para este período.
+                  </div>
+                ) : (
+                  consumptionByUnit.map((item) => (
+                    <div
+                      key={item.unit}
+                      className="bg-white rounded-lg p-3.5 border border-emerald-100 shadow-sm"
+                    >
+                      <div className="flex items-center justify-between text-xs text-zinc-500 mb-1">
+                        <span className="uppercase font-semibold tracking-wider text-emerald-800">
+                          {item.unit}
+                        </span>
+                        <span>
+                          {item.count} {item.count === 1 ? 'produto' : 'produtos'}
+                        </span>
+                      </div>
+                      <p className="text-xl font-extrabold text-zinc-900">
+                        {formatQuantity(item.total, item.unit)}
+                      </p>
+                      <p className="text-[11px] text-zinc-400 mt-0.5">consumidos no período</p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Grid de Balanço de Estoque Monetário */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Card>
               <CardContent className="p-4">
-                <p className="text-sm text-zinc-500">Estoque Inicial</p>
+                <p className="text-sm text-zinc-500">Estoque Inicial (R$)</p>
                 <p className="text-xl font-bold">{formatCurrency(cmvResult?.totalInicial || 0)}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <p className="text-sm text-zinc-500">Compras no Período</p>
+                <p className="text-sm text-zinc-500">Compras no Período (R$)</p>
                 <p className="text-xl font-bold">{formatCurrency(cmvResult?.totalCompras || 0)}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <p className="text-sm text-zinc-500">Estoque Final</p>
+                <p className="text-sm text-zinc-500">Estoque Final (R$)</p>
                 <p className="text-xl font-bold">{formatCurrency(cmvResult?.totalFinal || 0)}</p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <p className="text-sm text-zinc-500">Volume Gasto (CMV Total)</p>
+                <p className="text-sm text-zinc-500">Volume Gasto (CMV R$)</p>
                 <p className="text-xl font-bold text-emerald-700">
                   {formatCurrency(cmvResult?.totalCMV || 0)}
                 </p>
@@ -354,7 +484,12 @@ export function CmvReport({ selectedCategoryIds = [] }: CmvReportProps) {
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
-              <CardTitle className="text-lg font-serif">Detalhamento por Produto</CardTitle>
+              <div>
+                <CardTitle className="text-lg font-serif">Detalhamento por Produto</CardTitle>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  Consumo físico na unidade de cada produto e valor monetário correspondente
+                </p>
+              </div>
               <span className="text-xs text-zinc-500">
                 {displayedBreakdown.length}{' '}
                 {displayedBreakdown.length === 1 ? 'produto exibido' : 'produtos exibidos'}
@@ -366,10 +501,15 @@ export function CmvReport({ selectedCategoryIds = [] }: CmvReportProps) {
                   <TableHeader className="bg-zinc-50">
                     <TableRow>
                       <TableHead>Produto</TableHead>
-                      <TableHead>Categoria</TableHead>
-                      <TableHead className="text-right">Est. Inicial</TableHead>
-                      <TableHead className="text-right">Compras</TableHead>
-                      <TableHead className="text-right">Est. Final</TableHead>
+                      <TableHead className="hidden sm:table-cell">Categoria</TableHead>
+                      <TableHead className="text-right hidden sm:table-cell">
+                        Est. Inicial
+                      </TableHead>
+                      <TableHead className="text-right hidden sm:table-cell">Compras</TableHead>
+                      <TableHead className="text-right hidden sm:table-cell">Est. Final</TableHead>
+                      <TableHead className="text-right bg-emerald-50 text-emerald-950 font-semibold">
+                        Consumo no Período
+                      </TableHead>
                       <TableHead className="text-right">Volume Gasto (CMV)</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -377,20 +517,49 @@ export function CmvReport({ selectedCategoryIds = [] }: CmvReportProps) {
                     {displayedBreakdown.map((b) => (
                       <TableRow key={b.product.id}>
                         <TableCell className="font-medium text-zinc-900">
-                          {b.product.name}
-                          <span className="text-xs text-zinc-500 ml-1">({b.product.unit})</span>
+                          <div>{b.product.name}</div>
+                          <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                            <span className="text-xs text-zinc-500">
+                              Unidade: <strong className="text-zinc-700">{b.product.unit}</strong>
+                              {b.product.price
+                                ? ` • R$ ${b.product.price.toFixed(2)}/${b.product.unit}`
+                                : ''}
+                            </span>
+                            {/* Em mobile, exibe a categoria logo abaixo do nome */}
+                            <span className="sm:hidden">
+                              <Badge variant="outline" className="text-[10px] py-0 px-1.5">
+                                {b.product.expand?.category_id?.name || '-'}
+                              </Badge>
+                            </span>
+                          </div>
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="hidden sm:table-cell">
                           <Badge variant="outline" className="text-xs">
                             {b.product.expand?.category_id?.name || '-'}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-right">
-                          {formatCurrency(b.estoqueInicial)}
+                        <TableCell className="text-right hidden sm:table-cell">
+                          <div className="font-medium">{formatCurrency(b.estoqueInicial)}</div>
+                          <div className="text-xs text-zinc-500">
+                            {formatQuantity(b.estoqueInicialQtd, b.product.unit)}
+                          </div>
                         </TableCell>
-                        <TableCell className="text-right">{formatCurrency(b.compras)}</TableCell>
-                        <TableCell className="text-right">
-                          {formatCurrency(b.estoqueFinal)}
+                        <TableCell className="text-right hidden sm:table-cell">
+                          <div className="font-medium">{formatCurrency(b.compras)}</div>
+                          <div className="text-xs text-zinc-500">
+                            {formatQuantity(b.comprasQtd, b.product.unit)}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right hidden sm:table-cell">
+                          <div className="font-medium">{formatCurrency(b.estoqueFinal)}</div>
+                          <div className="text-xs text-zinc-500">
+                            {formatQuantity(b.estoqueFinalQtd, b.product.unit)}
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-right bg-emerald-50/40">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-md font-bold text-xs md:text-sm bg-emerald-100 text-emerald-900 border border-emerald-200/60">
+                            {formatQuantity(b.consumoQtd, b.product.unit)}
+                          </span>
                         </TableCell>
                         <TableCell className="text-right font-bold text-emerald-700">
                           {formatCurrency(b.cmv)}
@@ -399,10 +568,10 @@ export function CmvReport({ selectedCategoryIds = [] }: CmvReportProps) {
                     ))}
                     {displayedBreakdown.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={6} className="text-center text-zinc-500 py-6">
+                        <TableCell colSpan={7} className="text-center text-zinc-500 py-6 text-sm">
                           {productSearch
                             ? `Nenhum produto encontrado com o termo "${productSearch}".`
-                            : 'Nenhum produto CMV encontrado para o período.'}
+                            : 'Nenhum produto CMV encontrado para os filtros e período selecionados.'}
                         </TableCell>
                       </TableRow>
                     )}

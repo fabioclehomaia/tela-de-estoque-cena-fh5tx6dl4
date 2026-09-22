@@ -30,6 +30,11 @@ export interface CMVBreakdown {
   compras: number
   estoqueFinal: number
   cmv: number
+  // Quantidades físicas reais na unidade de medida do produto
+  estoqueInicialQtd: number
+  comprasQtd: number
+  estoqueFinalQtd: number
+  consumoQtd: number
 }
 
 export interface CMVResult {
@@ -52,23 +57,36 @@ export function calculateCMV(
 
   const breakdown = cmvProducts.map((product) => {
     const unitPrice = product.price || 0
-    const estoqueInicial = getStockAtDate(product.id, startDate, levels, counts) * unitPrice
-    const estoqueFinal = getStockAtDate(product.id, endDate, levels, counts) * unitPrice
+    const estoqueInicialQtd = getStockAtDate(product.id, startDate, levels, counts)
+    const estoqueFinalQtd = getStockAtDate(product.id, endDate, levels, counts)
 
-    const productCompras = compras
-      .filter((c) => {
-        if (c.product_id !== product.id) return false
-        const d = new Date(c.date)
-        return d >= startDate && d <= endDate
-      })
-      .reduce((sum, c) => sum + (c.quantity || 0) * (c.price || 0), 0)
+    const matchingCompras = compras.filter((c) => {
+      if (c.product_id !== product.id) return false
+      const d = new Date(c.date)
+      return d >= startDate && d <= endDate
+    })
+
+    const comprasQtd = matchingCompras.reduce((sum, c) => sum + (c.quantity || 0), 0)
+    const productCompras = matchingCompras.reduce(
+      (sum, c) => sum + (c.quantity || 0) * (c.price || 0),
+      0,
+    )
+
+    const estoqueInicial = estoqueInicialQtd * unitPrice
+    const estoqueFinal = estoqueFinalQtd * unitPrice
+    const cmv = estoqueInicial + productCompras - estoqueFinal
+    const consumoQtd = estoqueInicialQtd + comprasQtd - estoqueFinalQtd
 
     return {
       product,
       estoqueInicial,
       compras: productCompras,
       estoqueFinal,
-      cmv: estoqueInicial + productCompras - estoqueFinal,
+      cmv,
+      estoqueInicialQtd,
+      comprasQtd,
+      estoqueFinalQtd,
+      consumoQtd,
     }
   })
 
