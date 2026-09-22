@@ -974,44 +974,59 @@ export default function Reports() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2 md:grid-cols-7 mb-6 h-auto">
-          <TabsTrigger
-            value="history"
-            className="flex flex-col md:flex-row items-center gap-2 py-2"
-          >
-            <History className="w-4 h-4" /> <span className="hidden md:inline">Histórico</span>
-          </TabsTrigger>
-          <TabsTrigger
-            value="summary"
-            className="flex flex-col md:flex-row items-center gap-2 py-2"
-          >
-            <ListOrdered className="w-4 h-4" />{' '}
-            <span className="hidden md:inline">Estoque Atual</span>
-          </TabsTrigger>
-          <TabsTrigger
-            value="shopping"
-            className="flex flex-col md:flex-row items-center gap-2 py-2"
-          >
-            <ShoppingCart className="w-4 h-4" />{' '}
-            <span className="hidden md:inline">Lista de Compras</span>
-          </TabsTrigger>
-          <TabsTrigger value="trends" className="flex flex-col md:flex-row items-center gap-2 py-2">
-            <TrendingUp className="w-4 h-4" /> <span className="hidden md:inline">Tendências</span>
-          </TabsTrigger>
-          <TabsTrigger value="prices" className="flex flex-col md:flex-row items-center gap-2 py-2">
-            <DollarSign className="w-4 h-4" /> <span className="hidden md:inline">Preços</span>
-          </TabsTrigger>
-          <TabsTrigger value="cmv" className="flex flex-col md:flex-row items-center gap-2 py-2">
-            <Calculator className="w-4 h-4" /> <span className="hidden md:inline">CMV</span>
-          </TabsTrigger>
-          <TabsTrigger
-            value="financial"
-            className="flex flex-col md:flex-row items-center gap-2 py-2"
-          >
-            <BarChart3 className="w-4 h-4" />{' '}
-            <span className="hidden md:inline">Análise Financeira</span>
-          </TabsTrigger>
-        </TabsList>
+        <div className="w-full overflow-x-auto pb-1 mb-6 -mx-4 px-4 sm:mx-0 sm:px-0">
+          <TabsList className="flex w-max min-w-full md:grid md:grid-cols-7 h-auto p-1 gap-1">
+            <TabsTrigger
+              value="history"
+              className="flex items-center justify-center gap-2 py-2 px-3 text-xs sm:text-sm whitespace-nowrap"
+            >
+              <History className="hidden md:inline-block w-4 h-4 shrink-0" />
+              <span>Histórico</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="summary"
+              className="flex items-center justify-center gap-2 py-2 px-3 text-xs sm:text-sm whitespace-nowrap"
+            >
+              <ListOrdered className="hidden md:inline-block w-4 h-4 shrink-0" />
+              <span>Estoque Atual</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="shopping"
+              className="flex items-center justify-center gap-2 py-2 px-3 text-xs sm:text-sm whitespace-nowrap"
+            >
+              <ShoppingCart className="hidden md:inline-block w-4 h-4 shrink-0" />
+              <span>Lista de Compras</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="trends"
+              className="flex items-center justify-center gap-2 py-2 px-3 text-xs sm:text-sm whitespace-nowrap"
+            >
+              <TrendingUp className="hidden md:inline-block w-4 h-4 shrink-0" />
+              <span>Tendências</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="prices"
+              className="flex items-center justify-center gap-2 py-2 px-3 text-xs sm:text-sm whitespace-nowrap"
+            >
+              <DollarSign className="hidden md:inline-block w-4 h-4 shrink-0" />
+              <span>Preços</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="cmv"
+              className="flex items-center justify-center gap-2 py-2 px-3 text-xs sm:text-sm whitespace-nowrap"
+            >
+              <Calculator className="hidden md:inline-block w-4 h-4 shrink-0" />
+              <span>CMV</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="financial"
+              className="flex items-center justify-center gap-2 py-2 px-3 text-xs sm:text-sm whitespace-nowrap"
+            >
+              <BarChart3 className="hidden md:inline-block w-4 h-4 shrink-0" />
+              <span>Análise Financeira</span>
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         <Card className="shadow-sm border-zinc-200 mb-6 bg-white">
           <CardContent className="p-4 space-y-4">
