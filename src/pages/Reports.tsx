@@ -9,6 +9,7 @@ import {
   startOfMonth,
   subMonths,
   endOfMonth,
+  differenceInCalendarDays,
 } from 'date-fns'
 import {
   CheckCircle2,
@@ -31,6 +32,9 @@ import {
   Layers,
   Check,
   X,
+  AlertTriangle,
+  Clock,
+  ShieldAlert,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -70,6 +74,7 @@ import { getAreas, getSubareas, getCategories, Area, Subarea, Category } from '@
 import { getUsers, User } from '@/services/users'
 import { getProducts, Product } from '@/services/products'
 import { getProductPriceHistory, ProductPriceHistory } from '@/services/product_price_history'
+import { useAuth } from '@/hooks/use-auth'
 import pb from '@/lib/pocketbase/client'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
@@ -93,6 +98,7 @@ const COST_CATEGORIES = [
 ] as const
 
 export default function Reports() {
+  const { user: currentUser } = useAuth()
   const { toast } = useToast()
   const [counts, setCounts] = useState<InventoryCount[]>([])
   const [levels, setLevels] = useState<InventoryLevel[]>([])
@@ -171,6 +177,38 @@ export default function Reports() {
   const getCategoryName = (id: string) =>
     categories.find((c) => c.id === id)?.name || 'Desconhecida'
 
+  // Restrição de acesso por perfil (employee restrito a áreas/subáreas permitidas)
+  const availableAreas = useMemo(() => {
+    if (!currentUser) return areas
+    if (currentUser.role === 'admin' || currentUser.role === 'manager') return areas
+    const userAreaIds = currentUser.area_ids || []
+    const userSubareaIds = currentUser.subarea_ids || []
+    if (userAreaIds.length === 0 && userSubareaIds.length === 0) return areas
+    return areas.filter(
+      (a) =>
+        userAreaIds.includes(a.id) ||
+        subareas.some((s) => s.area_id === a.id && userSubareaIds.includes(s.id)),
+    )
+  }, [areas, subareas, currentUser])
+
+  const availableSubareas = useMemo(() => {
+    let filtered = subareas
+    if (areaId !== '_all_') {
+      filtered = filtered.filter((s) => s.area_id === areaId)
+    }
+    if (currentUser && currentUser.role === 'employee') {
+      const userAreaIds = currentUser.area_ids || []
+      const userSubareaIds = currentUser.subarea_ids || []
+      if (userAreaIds.length > 0 || userSubareaIds.length > 0) {
+        filtered = filtered.filter(
+          (s) => userAreaIds.includes(s.area_id) || userSubareaIds.includes(s.id),
+        )
+      }
+    }
+    return filtered
+  }, [subareas, areaId, currentUser])
+
+  // Mapa da última contagem por produto no geral
   const latestCountByProduct = useMemo(() => {
     const map = new Map<string, InventoryCount>()
     for (const count of counts) {
@@ -181,6 +219,70 @@ export default function Reports() {
     }
     return map
   }, [counts])
+
+  // Mapa da última contagem por produto e subárea específica
+  const latestCountByProductAndSubarea = useMemo(() => {
+    const map = new Map<string, InventoryCount>()
+    for (const count of counts) {
+      if (!count.product_id || !count.subarea_id) continue
+      const key = `${count.product_id}_${count.subarea_id}`
+      const existing = map.get(key)
+      if (!existing || new Date(count.created) > new Date(existing.created)) {
+        map.set(key, count)
+      }
+    }
+    return map
+  }, [counts])
+
+  // Status de frescor de contagem por área (menos de 3 dias = em dia; >= 3 dias ou nunca contada = alerta)
+  const areaFreshnessStatus = useMemo(() => {
+    const subareaToArea = new Map<string, string>()
+    subareas.forEach((s) => {
+      if (s.area_id) subareaToArea.set(s.id, s.area_id)
+    })
+
+    const latestDateByArea = new Map<string, Date>()
+    for (const count of counts) {
+      let aId = count.expand?.subarea_id?.expand?.area_id?.id
+      if (!aId && count.subarea_id) {
+        aId = subareaToArea.get(count.subarea_id)
+      }
+      if (!aId) continue
+      const d = safeDate(count.created)
+      const existing = latestDateByArea.get(aId)
+      if (!existing || d > existing) {
+        latestDateByArea.set(aId, d)
+      }
+    }
+
+    const now = new Date()
+    return availableAreas.map((area) => {
+      const lastDate = latestDateByArea.get(area.id)
+      if (!lastDate) {
+        return {
+          area,
+          lastDate: null,
+          daysSince: null,
+          isFresh: false,
+          label: 'Nunca contada',
+        }
+      }
+      const daysSince = differenceInCalendarDays(now, lastDate)
+      const isFresh = daysSince < 3
+      return {
+        area,
+        lastDate,
+        daysSince,
+        isFresh,
+        label:
+          daysSince === 0 ? 'Hoje' : daysSince === 1 ? 'Ontem (há 1 dia)' : `Há ${daysSince} dias`,
+      }
+    })
+  }, [availableAreas, subareas, counts])
+
+  const areasNeedingCount = useMemo(() => {
+    return areaFreshnessStatus.filter((a) => !a.isFresh)
+  }, [areaFreshnessStatus])
 
   // Master lookup for areas/subareas associated with each product (based on levels + history)
   const productLocations = useMemo(() => {
@@ -243,6 +345,8 @@ export default function Reports() {
   }, [counts, searchQuery, startDate, endDate, userId, selectedCategoryIds, areaId, subareaId])
 
   // --- SUMMARY TAB DATA ---
+  const isSpecificAreaAndSubarea = areaId !== '_all_' && subareaId !== '_all_'
+
   const summaryByProduct = useMemo(() => {
     const map = new Map<string, any>()
     products.forEach((p) => {
@@ -251,6 +355,11 @@ export default function Reports() {
         (!p.category_id || !selectedCategoryIds.includes(p.category_id))
       )
         return
+
+      const specificCount = isSpecificAreaAndSubarea
+        ? latestCountByProductAndSubarea.get(`${p.id}_${subareaId}`) || null
+        : null
+
       map.set(p.id, {
         id: p.id,
         name: p.name,
@@ -261,18 +370,21 @@ export default function Reports() {
         total: 0,
         hasMatchingLevel: false,
         breakdown: [],
-        latestCount: latestCountByProduct.get(p.id) || null,
+        latestCount: isSpecificAreaAndSubarea
+          ? specificCount
+          : latestCountByProduct.get(p.id) || null,
       })
     })
 
     levels.forEach((l) => {
       const pid = l.product_id
       if (!map.has(pid)) return
-      const subarea = l.expand?.subarea_id
-      const area = subarea?.expand?.area_id
+      const subarea = l.expand?.subarea_id || subareas.find((s) => s.id === l.subarea_id)
+      const aId = subarea?.area_id || (subarea as any)?.expand?.area_id?.id
+      const areaObj = areas.find((a) => a.id === aId)
 
-      const areaMatch = areaId === '_all_' || area?.id === areaId
-      const subareaMatch = subareaId === '_all_' || subarea?.id === subareaId
+      const areaMatch = areaId === '_all_' || aId === areaId
+      const subareaMatch = subareaId === '_all_' || l.subarea_id === subareaId
 
       if (areaMatch && subareaMatch) {
         const item = map.get(pid)!
@@ -280,7 +392,7 @@ export default function Reports() {
         item.hasMatchingLevel = true
         item.breakdown.push({
           subarea: subarea?.name || 'Desconhecida',
-          area: area?.name || 'Desconhecida',
+          area: areaObj?.name || 'Desconhecida',
           quantity: l.quantity,
         })
       }
@@ -315,6 +427,8 @@ export default function Reports() {
   }, [
     levels,
     products,
+    subareas,
+    areas,
     searchQuery,
     selectedCategoryIds,
     areaId,
@@ -322,6 +436,8 @@ export default function Reports() {
     sortField,
     sortDirection,
     latestCountByProduct,
+    latestCountByProductAndSubarea,
+    isSpecificAreaAndSubarea,
   ])
 
   // --- SHOPPING LIST TAB DATA ---
@@ -597,16 +713,33 @@ export default function Reports() {
 
     if (activeTab === 'summary') {
       title = 'Estoque Atual'
-      headers = ['Produto', 'Categoria', 'Unidade', 'Quantidade', 'Última Contagem', 'Responsável']
+      headers = isSpecificAreaAndSubarea
+        ? ['Produto', 'Categoria', 'Unidade', 'Quantidade', 'Última Contagem nesta Subárea']
+        : ['Produto', 'Categoria', 'Unidade', 'Quantidade', 'Última Contagem', 'Responsável']
       data = summaryByProduct.map((row) => {
         const lc = row.latestCount
+        const userName =
+          lc?.expand?.user_id?.name || lc?.expand?.user_id?.email?.split('@')[0] || 'Usuário'
+
+        if (isSpecificAreaAndSubarea) {
+          return [
+            row.name,
+            row.category,
+            row.unit,
+            row.total,
+            lc
+              ? `Contado por ${userName} em ${format(safeDate(lc.created), "dd/MM/yyyy 'às' HH:mm")}`
+              : 'Sem contagem nesta subárea',
+          ]
+        }
+
         return [
           row.name,
           row.category,
           row.unit,
           row.total,
           lc ? format(safeDate(lc.created), 'dd/MM/yyyy HH:mm') : 'Sem contagem',
-          lc?.expand?.user_id?.name || lc?.expand?.user_id?.email || '-',
+          lc ? userName : '-',
         ]
       })
     } else if (activeTab === 'shopping') {
@@ -1125,7 +1258,7 @@ export default function Reports() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="_all_">Todas</SelectItem>
-                        {areas.map((a) => (
+                        {availableAreas.map((a) => (
                           <SelectItem key={a.id} value={a.id}>
                             {a.name}
                           </SelectItem>
@@ -1146,13 +1279,11 @@ export default function Reports() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="_all_">Todas</SelectItem>
-                        {subareas
-                          .filter((s) => s.area_id === areaId)
-                          .map((s) => (
-                            <SelectItem key={s.id} value={s.id}>
-                              {s.name}
-                            </SelectItem>
-                          ))}
+                        {availableSubareas.map((s) => (
+                          <SelectItem key={s.id} value={s.id}>
+                            {s.name}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -1360,6 +1491,141 @@ export default function Reports() {
 
         {/* SUMMARY TAB */}
         <TabsContent value="summary" className="space-y-6">
+          {/* SITUAÇÃO 1: SEM FILTRO DE ÁREA (Visão geral do estoque) - Alerta e painel de frescor de contagem */}
+          {areaId === '_all_' && (
+            <div className="space-y-4">
+              {areasNeedingCount.length > 0 ? (
+                <div className="p-4 rounded-xl border-2 border-red-200 bg-red-50/70 shadow-sm animate-in fade-in duration-300">
+                  <div className="flex items-start gap-3">
+                    <div className="p-2 rounded-lg bg-red-100 text-red-700 shrink-0 mt-0.5">
+                      <ShieldAlert className="w-6 h-6 text-red-600" />
+                    </div>
+                    <div className="flex-1 space-y-2">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <h3 className="text-base font-bold text-red-950 flex items-center gap-2">
+                          <span>Alerta de Contagem de Estoque</span>
+                          <Badge variant="destructive" className="text-xs font-semibold">
+                            {areasNeedingCount.length}{' '}
+                            {areasNeedingCount.length === 1 ? 'área pendente' : 'áreas pendentes'}
+                          </Badge>
+                        </h3>
+                        <span className="text-xs text-red-700 font-medium">
+                          Regra: contagem obrigatória a cada 3 dias
+                        </span>
+                      </div>
+                      <p className="text-sm text-red-800">
+                        As seguintes áreas do restaurante{' '}
+                        <strong>NÃO foram contadas nos últimos 3 dias</strong> ou nunca receberam
+                        contagem:
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-1">
+                        {areasNeedingCount.map((item) => (
+                          <div
+                            key={item.area.id}
+                            className="bg-white/90 border border-red-200 rounded-lg p-2.5 flex items-center justify-between text-xs"
+                          >
+                            <span className="font-semibold text-zinc-900">{item.area.name}</span>
+                            <span className="inline-flex items-center gap-1 font-medium text-red-700 bg-red-100/70 px-2 py-0.5 rounded">
+                              <Clock className="w-3 h-3 text-red-600" />
+                              {item.lastDate
+                                ? `Há ${item.daysSince} dias (${format(item.lastDate, 'dd/MM')})`
+                                : 'Nunca contada'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50/70 shadow-sm flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-emerald-100 text-emerald-800 shrink-0">
+                    <CheckCircle2 className="w-6 h-6 text-emerald-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-emerald-950">
+                      Todas as áreas foram contadas em menos de 3 dias!
+                    </h3>
+                    <p className="text-xs text-emerald-800">
+                      O estoque de todas as áreas cadastradas está com o frescor de contagem em dia.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Card de Frescor de Contagem por Área */}
+              <Card className="border-zinc-200 shadow-sm bg-white">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <CardTitle className="text-base font-serif flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-emerald-800" />
+                      Frescor de Contagem por Área
+                    </CardTitle>
+                    <span className="text-xs text-zinc-500">
+                      Meta: todas as áreas contadas em menos de 3 dias
+                    </span>
+                  </div>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                    {areaFreshnessStatus.map((item) => (
+                      <div
+                        key={item.area.id}
+                        className={cn(
+                          'p-3 rounded-lg border text-sm flex items-center justify-between transition-colors',
+                          item.isFresh
+                            ? 'border-emerald-200 bg-emerald-50/40 text-emerald-950'
+                            : 'border-red-200 bg-red-50/40 text-red-950',
+                        )}
+                      >
+                        <div className="flex flex-col">
+                          <span className="font-semibold text-zinc-900">{item.area.name}</span>
+                          <span className="text-xs text-zinc-500">
+                            {item.lastDate
+                              ? `Última: ${format(item.lastDate, 'dd/MM/yyyy HH:mm')}`
+                              : 'Nenhuma contagem registrada'}
+                          </span>
+                        </div>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            'text-xs font-semibold shrink-0 ml-2',
+                            item.isFresh
+                              ? 'border-emerald-300 bg-emerald-100 text-emerald-800'
+                              : 'border-red-300 bg-red-100 text-red-700',
+                          )}
+                        >
+                          {item.label}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* Destaque contextual quando área + subárea estão selecionadas */}
+          {isSpecificAreaAndSubarea && (
+            <div className="p-3.5 rounded-lg border border-emerald-200 bg-emerald-50/60 flex items-center justify-between flex-wrap gap-2 text-xs text-emerald-950">
+              <span className="font-medium">
+                Visualizando rastreabilidade de contagem em{' '}
+                <strong>
+                  {areas.find((a) => a.id === areaId)?.name} •{' '}
+                  {subareas.find((s) => s.id === subareaId)?.name}
+                </strong>
+                . Abaixo você confere <strong>quem contou</strong> com{' '}
+                <strong>dia e horário exatos</strong> de cada produto.
+              </span>
+              <Badge
+                variant="outline"
+                className="border-emerald-300 bg-emerald-100 text-emerald-800"
+              >
+                Área + Subárea Ativas
+              </Badge>
+            </div>
+          )}
+
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-3 flex-wrap">
               <span className="text-sm font-medium text-zinc-600">Ordenar por:</span>
@@ -1413,64 +1679,99 @@ export default function Reports() {
                     <TableHead>Produto</TableHead>
                     <TableHead>Categoria</TableHead>
                     <TableHead className="text-right">Quantidade Total</TableHead>
-                    <TableHead>Última Contagem</TableHead>
-                    <TableHead>Responsável</TableHead>
+                    {/* SITUAÇÃO 2: Com área + subárea selecionadas, exibir quem fez a contagem com dia e horário */}
+                    {isSpecificAreaAndSubarea ? (
+                      <TableHead>Última Contagem nesta Subárea (Quem / Dia / Hora)</TableHead>
+                    ) : (
+                      <>
+                        <TableHead>Última Contagem</TableHead>
+                        <TableHead>Responsável</TableHead>
+                      </>
+                    )}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {summaryByProduct.map((item: any) => (
-                    <TableRow
-                      key={item.id}
-                      className="cursor-pointer hover:bg-zinc-50"
-                      onClick={() => setSelectedProduct(item)}
-                    >
-                      <TableCell className="font-medium text-zinc-900">
-                        <div className="flex items-center gap-3">
-                          {item.image ? (
-                            <div className="w-8 h-8 rounded border border-zinc-200 overflow-hidden bg-zinc-50 shrink-0">
-                              <img
-                                src={`${pb.baseUrl}/api/files/products/${item.id}/${item.image}?thumb=100x100`}
-                                alt={item.name}
-                                className="w-full h-full object-cover"
-                              />
+                  {summaryByProduct.map((item: any) => {
+                    const lc = item.latestCount
+                    const userName =
+                      lc?.expand?.user_id?.name ||
+                      lc?.expand?.user_id?.email?.split('@')[0] ||
+                      'Usuário'
+
+                    return (
+                      <TableRow
+                        key={item.id}
+                        className="cursor-pointer hover:bg-zinc-50"
+                        onClick={() => setSelectedProduct(item)}
+                      >
+                        <TableCell className="font-medium text-zinc-900">
+                          <div className="flex items-center gap-3">
+                            {item.image ? (
+                              <div className="w-8 h-8 rounded border border-zinc-200 overflow-hidden bg-zinc-50 shrink-0">
+                                <img
+                                  src={`${pb.baseUrl}/api/files/products/${item.id}/${item.image}?thumb=100x100`}
+                                  alt={item.name}
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                            ) : (
+                              <div className="w-8 h-8 rounded border border-zinc-200 bg-zinc-50 flex items-center justify-center shrink-0">
+                                <ImageIcon className="w-4 h-4 text-zinc-300" />
+                              </div>
+                            )}
+                            <div>
+                              {item.name}
+                              <span className="text-xs text-zinc-500 ml-1">({item.unit})</span>
                             </div>
-                          ) : (
-                            <div className="w-8 h-8 rounded border border-zinc-200 bg-zinc-50 flex items-center justify-center shrink-0">
-                              <ImageIcon className="w-4 h-4 text-zinc-300" />
-                            </div>
-                          )}
-                          <div>
-                            {item.name}
-                            <span className="text-xs text-zinc-500 ml-1">({item.unit})</span>
                           </div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-zinc-600">
-                        <Badge variant="outline" className="text-xs">
-                          {item.category}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right font-bold text-emerald-700">
-                        {item.total}
-                      </TableCell>
-                      <TableCell className="text-zinc-600 whitespace-nowrap text-sm">
-                        {item.latestCount ? (
-                          format(safeDate(item.latestCount.created), 'dd/MM/yyyy HH:mm')
+                        </TableCell>
+                        <TableCell className="text-zinc-600">
+                          <Badge variant="outline" className="text-xs">
+                            {item.category}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right font-bold text-emerald-700">
+                          {item.total}
+                        </TableCell>
+
+                        {/* SITUAÇÃO 2: Formatação exigida "Contado por Fabia em 12/06/2025 às 14:32" */}
+                        {isSpecificAreaAndSubarea ? (
+                          <TableCell className="text-zinc-700 text-sm">
+                            {lc ? (
+                              <span className="inline-flex items-center gap-1.5 flex-wrap">
+                                <Clock className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                                <span>
+                                  Contado por <strong className="text-zinc-900">{userName}</strong>{' '}
+                                  em {format(safeDate(lc.created), "dd/MM/yyyy 'às' HH:mm")}
+                                </span>
+                              </span>
+                            ) : (
+                              <span className="text-zinc-400">Sem contagem nesta subárea</span>
+                            )}
+                          </TableCell>
                         ) : (
-                          <span className="text-zinc-400">Sem contagem</span>
+                          <>
+                            <TableCell className="text-zinc-600 whitespace-nowrap text-sm">
+                              {lc ? (
+                                format(safeDate(lc.created), 'dd/MM/yyyy HH:mm')
+                              ) : (
+                                <span className="text-zinc-400">Sem contagem</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-zinc-600 text-sm">
+                              {lc ? userName : <span className="text-zinc-400">-</span>}
+                            </TableCell>
+                          </>
                         )}
-                      </TableCell>
-                      <TableCell className="text-zinc-600 text-sm">
-                        {item.latestCount?.expand?.user_id?.name ||
-                          item.latestCount?.expand?.user_id?.email || (
-                            <span className="text-zinc-400">-</span>
-                          )}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                      </TableRow>
+                    )
+                  })}
                   {summaryByProduct.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={5} className="h-24 text-center text-zinc-500">
+                      <TableCell
+                        colSpan={isSpecificAreaAndSubarea ? 4 : 5}
+                        className="h-24 text-center text-zinc-500"
+                      >
                         Nenhum produto encontrado.
                       </TableCell>
                     </TableRow>
