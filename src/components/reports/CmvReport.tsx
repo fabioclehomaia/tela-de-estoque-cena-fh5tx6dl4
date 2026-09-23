@@ -7,12 +7,19 @@ import {
   FilterX,
   TrendingDown,
   Calendar as CalendarIcon,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  AlertTriangle,
+  Info,
 } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import {
   Select,
   SelectContent,
@@ -50,6 +57,15 @@ const safeDate = (s: string) => new Date(s.split(' ')[0])
 
 type PeriodPreset = 'last_7_days' | 'last_month' | 'previous_month' | 'custom'
 
+export type CmvSortColumn =
+  | 'consumoQtd'
+  | 'cmv'
+  | 'compras'
+  | 'comprasQtd'
+  | 'estoqueFinal'
+  | 'estoqueInicial'
+  | 'name'
+
 interface CmvReportProps {
   selectedCategoryIds?: string[]
 }
@@ -64,6 +80,9 @@ export function CmvReport({ selectedCategoryIds = [] }: CmvReportProps) {
     const end = endOfMonth(new Date())
     return format(end, 'yyyy-MM-dd')
   })
+
+  const [sortColumn, setSortColumn] = useState<CmvSortColumn>('consumoQtd')
+  const [sortDirection, setSortDirection] = useState<'desc' | 'asc'>('desc')
 
   const [productSearch, setProductSearch] = useState('')
   const [loading, setLoading] = useState(true)
@@ -135,13 +154,47 @@ export function CmvReport({ selectedCategoryIds = [] }: CmvReportProps) {
     )
   }, [categoryFilteredProducts, compras, levels, counts, startDate, endDate])
 
-  // Produtos do breakdown filtrados pela lupa/busca por texto de produto específico
+  // Produtos do breakdown filtrados pela lupa/busca por texto de produto específico e reordenados simultaneamente
   const displayedBreakdown = useMemo(() => {
     if (!cmvResult) return []
-    if (!productSearch.trim()) return cmvResult.breakdown
-    const query = productSearch.toLowerCase().trim()
-    return cmvResult.breakdown.filter((b) => b.product.name.toLowerCase().includes(query))
-  }, [cmvResult, productSearch])
+    let list = cmvResult.breakdown
+    if (productSearch.trim()) {
+      const query = productSearch.toLowerCase().trim()
+      list = list.filter((b) => b.product.name.toLowerCase().includes(query))
+    }
+
+    const sorted = [...list].sort((a, b) => {
+      let comparison = 0
+      switch (sortColumn) {
+        case 'consumoQtd':
+          comparison = a.consumoQtd - b.consumoQtd
+          break
+        case 'cmv':
+          comparison = a.cmv - b.cmv
+          break
+        case 'compras':
+          comparison = a.compras - b.compras
+          break
+        case 'comprasQtd':
+          comparison = a.comprasQtd - b.comprasQtd
+          break
+        case 'estoqueFinal':
+          comparison = a.estoqueFinal - b.estoqueFinal
+          break
+        case 'estoqueInicial':
+          comparison = a.estoqueInicial - b.estoqueInicial
+          break
+        case 'name':
+          comparison = a.product.name.localeCompare(b.product.name, 'pt-BR')
+          break
+        default:
+          comparison = 0
+      }
+      return sortDirection === 'desc' ? -comparison : comparison
+    })
+
+    return sorted
+  }, [cmvResult, productSearch, sortColumn, sortDirection])
 
   // Volume gasto / CMV correspondente aos itens atualmente filtrados na tabela
   const displayedCMVTotal = useMemo(() => {
@@ -319,15 +372,42 @@ export function CmvReport({ selectedCategoryIds = [] }: CmvReportProps) {
                           )}
                         </span>
                       </span>
-                      <span className="text-xs font-semibold text-rose-100 bg-rose-950/70 border border-rose-400/50 px-2 py-0.5 rounded inline-flex items-center gap-1">
-                        Consumo físico:
-                        <span className="text-rose-200 font-bold">
-                          {formatQuantity(
-                            displayedBreakdown[0].consumoQtd,
-                            displayedBreakdown[0].product.unit,
-                          )}
-                        </span>
-                      </span>
+                      {(() => {
+                        const item = displayedBreakdown[0]
+                        const isNegative = item.consumoQtd < -0.0001
+                        const isZero = Math.abs(item.consumoQtd) <= 0.0001
+                        return (
+                          <span
+                            className={cn(
+                              'text-xs font-semibold px-2 py-0.5 rounded inline-flex items-center gap-1 border',
+                              isNegative
+                                ? 'text-emerald-100 bg-emerald-950/80 border-emerald-400/60'
+                                : isZero
+                                  ? 'text-zinc-200 bg-zinc-800/80 border-zinc-600/60'
+                                  : 'text-rose-100 bg-rose-950/70 border-rose-400/50',
+                            )}
+                          >
+                            Consumo físico:
+                            <span
+                              className={cn(
+                                'font-bold',
+                                isNegative
+                                  ? 'text-emerald-300'
+                                  : isZero
+                                    ? 'text-zinc-300'
+                                    : 'text-rose-200',
+                              )}
+                            >
+                              {formatQuantity(item.consumoQtd, item.product.unit)}
+                            </span>
+                            {isNegative && (
+                              <span className="text-[10px] ml-0.5 bg-emerald-500/20 px-1 py-0.2 rounded text-emerald-200">
+                                Acréscimo s/ compra
+                              </span>
+                            )}
+                          </span>
+                        )
+                      })()}
                     </div>
                   ) : (
                     <span className="text-xs text-emerald-200 block">
@@ -395,113 +475,364 @@ export function CmvReport({ selectedCategoryIds = [] }: CmvReportProps) {
           </Card>
 
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
-              <div>
-                <CardTitle className="text-lg font-serif">Detalhamento por Produto</CardTitle>
-                <p className="text-xs text-zinc-500 mt-0.5">
-                  Consumo físico na unidade de cada produto e valor monetário correspondente
-                </p>
+            <CardHeader className="flex flex-col gap-3 pb-3">
+              <div className="flex flex-row items-center justify-between flex-wrap gap-2">
+                <div>
+                  <CardTitle className="text-lg font-serif">Detalhamento por Produto</CardTitle>
+                  <p className="text-xs text-zinc-500 mt-0.5">
+                    Consumo físico na unidade de cada produto e valor monetário correspondente
+                  </p>
+                </div>
+                <span className="text-xs text-zinc-500 font-medium">
+                  {displayedBreakdown.length}{' '}
+                  {displayedBreakdown.length === 1 ? 'produto exibido' : 'produtos exibidos'}
+                </span>
               </div>
-              <span className="text-xs text-zinc-500">
-                {displayedBreakdown.length}{' '}
-                {displayedBreakdown.length === 1 ? 'produto exibido' : 'produtos exibidos'}
-              </span>
+
+              {/* SELETOR DE MODO DE EXIBIÇÃO / ORDENAÇÃO */}
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-2 border-t border-zinc-100">
+                <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
+                  <span className="text-xs font-semibold text-zinc-600 flex items-center gap-1.5 shrink-0">
+                    <ArrowUpDown className="w-3.5 h-3.5 text-emerald-700" />
+                    Modo de exibição (ordenar por):
+                  </span>
+                  <div className="flex items-center gap-2 flex-1 sm:flex-initial">
+                    <Select
+                      value={sortColumn}
+                      onValueChange={(val) => setSortColumn(val as CmvSortColumn)}
+                    >
+                      <SelectTrigger className="h-9 w-full sm:w-[240px] text-xs sm:text-sm bg-white">
+                        <SelectValue placeholder="Ordenar por..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="consumoQtd">
+                          Consumo Físico (
+                          {sortDirection === 'desc' ? 'Maior → Menor' : 'Menor → Maior'})
+                        </SelectItem>
+                        <SelectItem value="cmv">
+                          Volume Gasto / CMV R$ (
+                          {sortDirection === 'desc' ? 'Maior → Menor' : 'Menor → Maior'})
+                        </SelectItem>
+                        <SelectItem value="compras">
+                          Compras em R$ (
+                          {sortDirection === 'desc' ? 'Maior → Menor' : 'Menor → Maior'})
+                        </SelectItem>
+                        <SelectItem value="comprasQtd">Compras Físicas (Qtd)</SelectItem>
+                        <SelectItem value="estoqueFinal">Estoque Final (R$)</SelectItem>
+                        <SelectItem value="estoqueInicial">Estoque Inicial (R$)</SelectItem>
+                        <SelectItem value="name">Nome do Produto (A-Z)</SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSortDirection((prev) => (prev === 'desc' ? 'asc' : 'desc'))}
+                      className="h-9 px-2.5 text-xs shrink-0 gap-1 bg-white hover:bg-zinc-50 border-zinc-200"
+                      title={
+                        sortDirection === 'desc'
+                          ? 'Ordenação decrescente (maior para menor)'
+                          : 'Ordenação crescente (menor para maior)'
+                      }
+                    >
+                      {sortDirection === 'desc' ? (
+                        <>
+                          <ArrowDown className="w-3.5 h-3.5 text-emerald-700" />
+                          <span className="hidden xs:inline">Decrescente</span>
+                        </>
+                      ) : (
+                        <>
+                          <ArrowUp className="w-3.5 h-3.5 text-emerald-700" />
+                          <span className="hidden xs:inline">Crescente</span>
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* LEGENDA RÁPIDA DAS CORES SEMÂNTICAS DO CONSUMO */}
+                <div className="flex items-center gap-3 text-[11px] text-zinc-500 flex-wrap">
+                  <span className="font-medium text-zinc-600">Cores de consumo físico:</span>
+                  <span className="inline-flex items-center gap-1 text-emerald-700 font-medium">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-emerald-200" />
+                    Negativo (Acréscimo s/ compra)
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-zinc-600 font-medium">
+                    <span className="w-2.5 h-2.5 rounded-full bg-zinc-400 ring-2 ring-zinc-200" />
+                    Zero (Sem movimento)
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-rose-700 font-medium">
+                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500 ring-2 ring-rose-200" />
+                    Positivo (Baixa de estoque)
+                  </span>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader className="bg-zinc-50">
-                    <TableRow>
-                      <TableHead>Produto</TableHead>
-                      <TableHead className="hidden sm:table-cell">Categoria</TableHead>
-                      <TableHead className="text-right hidden sm:table-cell">
-                        Est. Inicial
-                      </TableHead>
-                      <TableHead className="text-right hidden sm:table-cell bg-emerald-50/60 text-emerald-950 font-semibold">
-                        Compras (+)
-                      </TableHead>
-                      <TableHead className="text-right hidden sm:table-cell">Est. Final</TableHead>
-                      <TableHead className="text-right bg-red-50 text-red-950 font-semibold">
-                        Consumo no Período (-)
-                      </TableHead>
-                      <TableHead className="text-right">Volume Gasto (CMV)</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {displayedBreakdown.map((b) => (
-                      <TableRow key={b.product.id}>
-                        <TableCell className="font-medium text-zinc-900">
-                          <div>{b.product.name}</div>
-                          <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-                            <span className="text-xs text-zinc-500">
-                              Unidade: <strong className="text-zinc-700">{b.product.unit}</strong>
-                              {b.product.price
-                                ? ` • R$ ${b.product.price.toFixed(2)}/${b.product.unit}`
-                                : ''}
-                            </span>
-                            {/* Em mobile, exibe a categoria logo abaixo do nome */}
-                            <span className="sm:hidden">
-                              <Badge variant="outline" className="text-[10px] py-0 px-1.5">
+              <TooltipProvider delayDuration={150}>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader className="bg-zinc-50">
+                      <TableRow>
+                        <TableHead>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (sortColumn === 'name') {
+                                setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+                              } else {
+                                setSortColumn('name')
+                                setSortDirection('asc')
+                              }
+                            }}
+                            className="inline-flex items-center gap-1 text-inherit font-semibold hover:text-zinc-900"
+                          >
+                            Produto
+                            {sortColumn === 'name' &&
+                              (sortDirection === 'asc' ? (
+                                <ArrowUp className="w-3 h-3 text-emerald-700" />
+                              ) : (
+                                <ArrowDown className="w-3 h-3 text-emerald-700" />
+                              ))}
+                          </button>
+                        </TableHead>
+                        <TableHead className="hidden sm:table-cell">Categoria</TableHead>
+                        <TableHead className="text-right hidden sm:table-cell">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (sortColumn === 'estoqueInicial') {
+                                setSortDirection((prev) => (prev === 'desc' ? 'asc' : 'desc'))
+                              } else {
+                                setSortColumn('estoqueInicial')
+                                setSortDirection('desc')
+                              }
+                            }}
+                            className="inline-flex items-center justify-end gap-1 text-inherit font-semibold hover:text-zinc-900 ml-auto"
+                          >
+                            Est. Inicial
+                            {sortColumn === 'estoqueInicial' &&
+                              (sortDirection === 'desc' ? (
+                                <ArrowDown className="w-3 h-3 text-emerald-700" />
+                              ) : (
+                                <ArrowUp className="w-3 h-3 text-emerald-700" />
+                              ))}
+                          </button>
+                        </TableHead>
+                        <TableHead className="text-right hidden sm:table-cell bg-emerald-50/60 text-emerald-950 font-semibold">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (sortColumn === 'compras') {
+                                setSortDirection((prev) => (prev === 'desc' ? 'asc' : 'desc'))
+                              } else {
+                                setSortColumn('compras')
+                                setSortDirection('desc')
+                              }
+                            }}
+                            className="inline-flex items-center justify-end gap-1 text-emerald-950 font-semibold hover:text-emerald-900 ml-auto"
+                          >
+                            Compras (+)
+                            {sortColumn === 'compras' &&
+                              (sortDirection === 'desc' ? (
+                                <ArrowDown className="w-3 h-3 text-emerald-700" />
+                              ) : (
+                                <ArrowUp className="w-3 h-3 text-emerald-700" />
+                              ))}
+                          </button>
+                        </TableHead>
+                        <TableHead className="text-right hidden sm:table-cell">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (sortColumn === 'estoqueFinal') {
+                                setSortDirection((prev) => (prev === 'desc' ? 'asc' : 'desc'))
+                              } else {
+                                setSortColumn('estoqueFinal')
+                                setSortDirection('desc')
+                              }
+                            }}
+                            className="inline-flex items-center justify-end gap-1 text-inherit font-semibold hover:text-zinc-900 ml-auto"
+                          >
+                            Est. Final
+                            {sortColumn === 'estoqueFinal' &&
+                              (sortDirection === 'desc' ? (
+                                <ArrowDown className="w-3 h-3 text-emerald-700" />
+                              ) : (
+                                <ArrowUp className="w-3 h-3 text-emerald-700" />
+                              ))}
+                          </button>
+                        </TableHead>
+                        <TableHead className="text-right bg-zinc-100/70 text-zinc-900 font-semibold">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (sortColumn === 'consumoQtd') {
+                                setSortDirection((prev) => (prev === 'desc' ? 'asc' : 'desc'))
+                              } else {
+                                setSortColumn('consumoQtd')
+                                setSortDirection('desc')
+                              }
+                            }}
+                            className="inline-flex items-center justify-end gap-1 text-inherit font-semibold hover:text-zinc-900 ml-auto"
+                          >
+                            Consumo no Período (−)
+                            {sortColumn === 'consumoQtd' &&
+                              (sortDirection === 'desc' ? (
+                                <ArrowDown className="w-3 h-3 text-emerald-700" />
+                              ) : (
+                                <ArrowUp className="w-3 h-3 text-emerald-700" />
+                              ))}
+                          </button>
+                        </TableHead>
+                        <TableHead className="text-right">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (sortColumn === 'cmv') {
+                                setSortDirection((prev) => (prev === 'desc' ? 'asc' : 'desc'))
+                              } else {
+                                setSortColumn('cmv')
+                                setSortDirection('desc')
+                              }
+                            }}
+                            className="inline-flex items-center justify-end gap-1 text-inherit font-semibold hover:text-zinc-900 ml-auto"
+                          >
+                            Volume Gasto (CMV)
+                            {sortColumn === 'cmv' &&
+                              (sortDirection === 'desc' ? (
+                                <ArrowDown className="w-3 h-3 text-emerald-700" />
+                              ) : (
+                                <ArrowUp className="w-3 h-3 text-emerald-700" />
+                              ))}
+                          </button>
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {displayedBreakdown.map((b) => {
+                        const isNegativeConsumo = b.consumoQtd < -0.0001
+                        const isZeroConsumo = Math.abs(b.consumoQtd) <= 0.0001
+                        const isPositiveConsumo = b.consumoQtd > 0.0001
+
+                        return (
+                          <TableRow key={b.product.id}>
+                            <TableCell className="font-medium text-zinc-900">
+                              <div>{b.product.name}</div>
+                              <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                                <span className="text-xs text-zinc-500">
+                                  Unidade:{' '}
+                                  <strong className="text-zinc-700">{b.product.unit}</strong>
+                                  {b.product.price
+                                    ? ` • R$ ${b.product.price.toFixed(2)}/${b.product.unit}`
+                                    : ''}
+                                </span>
+                                {/* Em mobile, exibe a categoria logo abaixo do nome */}
+                                <span className="sm:hidden">
+                                  <Badge variant="outline" className="text-[10px] py-0 px-1.5">
+                                    {b.product.expand?.category_id?.name || '-'}
+                                  </Badge>
+                                </span>
+                              </div>
+                              {/* Em mobile, exibe resumo rápido de compras e consumo */}
+                              <div className="sm:hidden mt-1 text-xs text-zinc-600 flex items-center gap-2 flex-wrap">
+                                <span>
+                                  Entrou:{' '}
+                                  <strong className="text-emerald-700 font-semibold">
+                                    +{formatQuantity(b.comprasQtd, b.product.unit)}
+                                  </strong>
+                                </span>
+                                {isNegativeConsumo && (
+                                  <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-100/90 px-1.5 py-0.5 rounded border border-emerald-300 flex items-center gap-1">
+                                    <AlertTriangle className="w-3 h-3 text-emerald-700" />
+                                    Acréscimo s/ compra (
+                                    {formatQuantity(b.consumoQtd, b.product.unit)})
+                                  </span>
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="hidden sm:table-cell">
+                              <Badge variant="outline" className="text-xs">
                                 {b.product.expand?.category_id?.name || '-'}
                               </Badge>
-                            </span>
-                          </div>
-                          {/* Em mobile, exibe resumo rápido de compras (entradas em verde) */}
-                          <div className="sm:hidden mt-1 text-xs text-zinc-600 flex items-center gap-2">
-                            <span>
-                              Entrou:{' '}
-                              <strong className="text-emerald-700 font-semibold">
-                                +{formatQuantity(b.comprasQtd, b.product.unit)}
-                              </strong>
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="hidden sm:table-cell">
-                          <Badge variant="outline" className="text-xs">
-                            {b.product.expand?.category_id?.name || '-'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-right hidden sm:table-cell">
-                          <div className="font-medium">{formatCurrency(b.estoqueInicial)}</div>
-                          <div className="text-xs text-zinc-500">
-                            {formatQuantity(b.estoqueInicialQtd, b.product.unit)}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right hidden sm:table-cell bg-emerald-50/20">
-                          <div className="font-medium">{formatCurrency(b.compras)}</div>
-                          <div className="text-xs font-semibold text-emerald-700 inline-flex items-center justify-end gap-0.5">
-                            <span className="font-bold">+</span>
-                            {formatQuantity(b.comprasQtd, b.product.unit)}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right hidden sm:table-cell">
-                          <div className="font-medium">{formatCurrency(b.estoqueFinal)}</div>
-                          <div className="text-xs text-zinc-500">
-                            {formatQuantity(b.estoqueFinalQtd, b.product.unit)}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-right bg-red-50/40">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-md font-bold text-xs md:text-sm bg-red-100 text-red-700 border border-red-200/70">
-                            {formatQuantity(b.consumoQtd, b.product.unit)}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-right font-bold text-emerald-700">
-                          {formatCurrency(b.cmv)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {displayedBreakdown.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={7} className="text-center text-zinc-500 py-6 text-sm">
-                          {productSearch
-                            ? `Nenhum produto encontrado com o termo "${productSearch}".`
-                            : 'Nenhum produto CMV encontrado para os filtros e período selecionados.'}
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
+                            </TableCell>
+                            <TableCell className="text-right hidden sm:table-cell">
+                              <div className="font-medium">{formatCurrency(b.estoqueInicial)}</div>
+                              <div className="text-xs text-zinc-500">
+                                {formatQuantity(b.estoqueInicialQtd, b.product.unit)}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right hidden sm:table-cell bg-emerald-50/20">
+                              <div className="font-medium text-emerald-950">
+                                {formatCurrency(b.compras)}
+                              </div>
+                              <div className="text-xs font-semibold text-emerald-700 inline-flex items-center justify-end gap-0.5">
+                                <span className="font-bold">+</span>
+                                {formatQuantity(b.comprasQtd, b.product.unit)}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-right hidden sm:table-cell">
+                              <div className="font-medium">{formatCurrency(b.estoqueFinal)}</div>
+                              <div className="text-xs text-zinc-500">
+                                {formatQuantity(b.estoqueFinalQtd, b.product.unit)}
+                              </div>
+                            </TableCell>
+                            <TableCell
+                              className={cn(
+                                'text-right transition-colors',
+                                isNegativeConsumo && 'bg-emerald-50/50',
+                                isZeroConsumo && 'bg-zinc-50/60',
+                                isPositiveConsumo && 'bg-red-50/40',
+                              )}
+                            >
+                              {isNegativeConsumo ? (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-bold text-xs md:text-sm bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-xs cursor-help">
+                                      <AlertTriangle className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                                      {formatQuantity(b.consumoQtd, b.product.unit)}
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="left" className="max-w-xs text-xs">
+                                    <p className="font-semibold text-emerald-950">
+                                      Acréscimo no estoque sem compra
+                                    </p>
+                                    <p className="text-zinc-600 mt-0.5">
+                                      O estoque final superou o inicial sem compras registradas.
+                                      Verifique se faltou imputar compras ou houve contagem errada.
+                                    </p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              ) : isZeroConsumo ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-md font-medium text-xs md:text-sm bg-zinc-100 text-zinc-600 border border-zinc-200">
+                                  {formatQuantity(0, b.product.unit)}
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-md font-bold text-xs md:text-sm bg-red-100 text-red-700 border border-red-200/70">
+                                  {formatQuantity(b.consumoQtd, b.product.unit)}
+                                </span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right font-bold text-emerald-700">
+                              {formatCurrency(b.cmv)}
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
+                      {displayedBreakdown.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={7} className="text-center text-zinc-500 py-6 text-sm">
+                            {productSearch
+                              ? `Nenhum produto encontrado com o termo "${productSearch}".`
+                              : 'Nenhum produto CMV encontrado para os filtros e período selecionados.'}
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </TooltipProvider>
             </CardContent>
           </Card>
         </>

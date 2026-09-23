@@ -8,7 +8,21 @@ import {
   FilterX,
   Info,
   TrendingDown,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  AlertTriangle,
 } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -68,6 +82,14 @@ const safeDate = (s: string) => new Date(s.split(' ')[0])
 
 export type CalculationMode = 'purchases' | 'consumption'
 
+export type FinancialSortOption =
+  | 'consumoTotal' // Consumo em R$ (ou Total Compras)
+  | 'consumoQtd' // Consumo físico
+  | 'comprasQtd' // Qtd Comprada
+  | 'estoqueFinalQtd' // Estoque final físico
+  | 'estoqueInicialQtd' // Estoque inicial físico
+  | 'name' // Nome alfabético
+
 interface FinancialDashboardProps {
   selectedCategoryIds?: string[]
 }
@@ -75,6 +97,8 @@ interface FinancialDashboardProps {
 export function FinancialDashboard({ selectedCategoryIds = [] }: FinancialDashboardProps) {
   const [calculationMode, setCalculationMode] = useState<CalculationMode>('purchases')
   const [productSearch, setProductSearch] = useState('')
+  const [sortOption, setSortOption] = useState<FinancialSortOption>('consumoTotal')
+  const [sortDirection, setSortDirection] = useState<'desc' | 'asc'>('desc')
   const [period, setPeriod] = useState<PeriodRange>({ start: '', end: '' })
   const [selectedCategories, setSelectedCategories] = useState<string[]>(['CMV'])
   const [loading, setLoading] = useState(true)
@@ -148,7 +172,6 @@ export function FinancialDashboard({ selectedCategoryIds = [] }: FinancialDashbo
               }
             })
             .filter((item) => item.total > 0)
-            .sort((a, b) => b.total - a.total)
 
           return { category: cat, total, productBreakdown }
         } else {
@@ -168,7 +191,6 @@ export function FinancialDashboard({ selectedCategoryIds = [] }: FinancialDashbo
               }
             })
             .filter((item) => item.total !== 0 || item.count > 0 || item.hasInventoryData)
-            .sort((a, b) => b.total - a.total)
 
           const total = productBreakdown.reduce((sum, item) => sum + item.total, 0)
           return { category: cat, total, productBreakdown }
@@ -186,24 +208,53 @@ export function FinancialDashboard({ selectedCategoryIds = [] }: FinancialDashbo
     calculationMode,
   ])
 
-  // Aplicar busca por produto (quando digitado)
+  // Aplicar busca por produto e ordenação simultânea de todos os produtos dentro de cada categoria
   const filteredCategoryData = useMemo(() => {
-    if (!productSearch.trim()) return categoryData
     const q = productSearch.toLowerCase().trim()
+
     return categoryData
       .map((cat) => {
-        const filteredBreakdown = cat.productBreakdown.filter((item) =>
-          item.product.name.toLowerCase().includes(q),
-        )
-        const subtotal = filteredBreakdown.reduce((sum, item) => sum + item.total, 0)
+        let list = cat.productBreakdown
+        if (q) {
+          list = list.filter((item) => item.product.name.toLowerCase().includes(q))
+        }
+
+        const sortedBreakdown = [...list].sort((a, b) => {
+          let comparison = 0
+          switch (sortOption) {
+            case 'consumoTotal':
+              comparison = a.total - b.total
+              break
+            case 'consumoQtd':
+              comparison = a.consumoQtd - b.consumoQtd
+              break
+            case 'comprasQtd':
+              comparison = a.comprasQtd - b.comprasQtd
+              break
+            case 'estoqueFinalQtd':
+              comparison = a.estoqueFinalQtd - b.estoqueFinalQtd
+              break
+            case 'estoqueInicialQtd':
+              comparison = a.estoqueInicialQtd - b.estoqueInicialQtd
+              break
+            case 'name':
+              comparison = a.product.name.localeCompare(b.product.name, 'pt-BR')
+              break
+            default:
+              comparison = 0
+          }
+          return sortDirection === 'desc' ? -comparison : comparison
+        })
+
+        const subtotal = sortedBreakdown.reduce((sum, item) => sum + item.total, 0)
         return {
           ...cat,
           total: subtotal,
-          productBreakdown: filteredBreakdown,
+          productBreakdown: sortedBreakdown,
         }
       })
       .filter((cat) => cat.productBreakdown.length > 0)
-  }, [categoryData, productSearch])
+  }, [categoryData, productSearch, sortOption, sortDirection])
 
   const barData = filteredCategoryData.map((d) => ({
     name: d.category,
@@ -559,124 +610,423 @@ export function FinancialDashboard({ selectedCategoryIds = [] }: FinancialDashbo
             </Card>
           </div>
 
-          {filteredCategoryData.map((d) => (
-            <Card key={d.category}>
-              <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2">
-                <CardTitle className="text-lg font-serif">
-                  {d.category} — {formatCurrency(d.total)}
-                </CardTitle>
-                <Badge
-                  variant="secondary"
-                  className={
-                    calculationMode === 'consumption'
-                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200 text-xs'
-                      : 'bg-zinc-100 text-zinc-700 border-zinc-200 text-xs'
-                  }
-                >
-                  {calculationMode === 'consumption' ? 'Consumo Real' : 'Compras'}
-                </Badge>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader className="bg-zinc-50">
-                      <TableRow>
-                        <TableHead>Produto</TableHead>
-                        <TableHead>Unidade</TableHead>
-                        {calculationMode === 'consumption' ? (
-                          <>
-                            <TableHead className="text-right hidden sm:table-cell">
-                              Est. Inicial
-                            </TableHead>
-                            <TableHead className="text-right hidden sm:table-cell bg-emerald-50/60 text-emerald-950 font-semibold">
-                              Compras (+)
-                            </TableHead>
-                            <TableHead className="text-right hidden sm:table-cell">
-                              Est. Final
-                            </TableHead>
-                            <TableHead className="text-right bg-red-50 text-red-950 font-semibold">
-                              Consumo Físico (-)
-                            </TableHead>
-                            <TableHead className="text-right font-semibold">Consumo (R$)</TableHead>
-                          </>
-                        ) : (
-                          <>
-                            <TableHead className="text-right">Qtd Comprada</TableHead>
-                            <TableHead className="text-right">Nº Compras</TableHead>
-                            <TableHead className="text-right font-semibold">
-                              Total Compras
-                            </TableHead>
-                          </>
-                        )}
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {d.productBreakdown.map((item) => (
-                        <TableRow key={item.product.id}>
-                          <TableCell className="font-medium text-zinc-900">
-                            <div>{item.product.name}</div>
-                            {calculationMode === 'consumption' && !item.hasInventoryData && (
-                              <div className="text-[11px] text-amber-700 flex items-center gap-1 mt-0.5">
-                                <Info className="w-3 h-3 shrink-0" />
-                                <span>Sem contagens no período (baseado em compras)</span>
-                              </div>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-zinc-500">{item.product.unit}</TableCell>
+          {/* BARRA DE CONTROLE DE ORDENAÇÃO / MODO DE EXIBIÇÃO PARA AS TABELAS */}
+          <Card className="border-zinc-200 bg-white shadow-xs">
+            <CardContent className="p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
+                <span className="text-xs font-semibold text-zinc-700 flex items-center gap-1.5 shrink-0">
+                  <ArrowUpDown className="w-3.5 h-3.5 text-emerald-700" />
+                  Modo de exibição das tabelas:
+                </span>
+                <div className="flex items-center gap-2 flex-1 sm:flex-initial">
+                  <Select
+                    value={sortOption}
+                    onValueChange={(val) => setSortOption(val as FinancialSortOption)}
+                  >
+                    <SelectTrigger className="h-9 w-full sm:w-[260px] text-xs sm:text-sm bg-white">
+                      <SelectValue placeholder="Ordenar produtos por..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {calculationMode === 'consumption' ? (
+                        <>
+                          <SelectItem value="consumoQtd">
+                            Consumo Físico (
+                            {sortDirection === 'desc' ? 'Maior → Menor' : 'Menor → Maior'})
+                          </SelectItem>
+                          <SelectItem value="consumoTotal">
+                            Consumo em R$ (
+                            {sortDirection === 'desc' ? 'Maior → Menor' : 'Menor → Maior'})
+                          </SelectItem>
+                          <SelectItem value="comprasQtd">Compras (+) Físicas</SelectItem>
+                          <SelectItem value="estoqueFinalQtd">Estoque Final Físico</SelectItem>
+                          <SelectItem value="estoqueInicialQtd">Estoque Inicial Físico</SelectItem>
+                          <SelectItem value="name">Nome do Produto (A-Z)</SelectItem>
+                        </>
+                      ) : (
+                        <>
+                          <SelectItem value="consumoTotal">
+                            Total Compras R$ (
+                            {sortDirection === 'desc' ? 'Maior → Menor' : 'Menor → Maior'})
+                          </SelectItem>
+                          <SelectItem value="comprasQtd">
+                            Quantidade Comprada (
+                            {sortDirection === 'desc' ? 'Maior → Menor' : 'Menor → Maior'})
+                          </SelectItem>
+                          <SelectItem value="name">Nome do Produto (A-Z)</SelectItem>
+                        </>
+                      )}
+                    </SelectContent>
+                  </Select>
 
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setSortDirection((prev) => (prev === 'desc' ? 'asc' : 'desc'))}
+                    className="h-9 px-2.5 text-xs shrink-0 gap-1 bg-white hover:bg-zinc-50 border-zinc-200"
+                    title={
+                      sortDirection === 'desc'
+                        ? 'Ordenação decrescente (maior para menor)'
+                        : 'Ordenação crescente (menor para maior)'
+                    }
+                  >
+                    {sortDirection === 'desc' ? (
+                      <>
+                        <ArrowDown className="w-3.5 h-3.5 text-emerald-700" />
+                        <span className="hidden xs:inline">Decrescente</span>
+                      </>
+                    ) : (
+                      <>
+                        <ArrowUp className="w-3.5 h-3.5 text-emerald-700" />
+                        <span className="hidden xs:inline">Crescente</span>
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+
+              {calculationMode === 'consumption' && (
+                <div className="flex items-center gap-3 text-[11px] text-zinc-500 flex-wrap">
+                  <span className="font-medium text-zinc-600">Consumo físico:</span>
+                  <span className="inline-flex items-center gap-1 text-emerald-700 font-medium">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-emerald-200" />
+                    Negativo (Acréscimo s/ compra)
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-zinc-600 font-medium">
+                    <span className="w-2.5 h-2.5 rounded-full bg-zinc-400 ring-2 ring-zinc-200" />
+                    Zero (Sem movimento)
+                  </span>
+                  <span className="inline-flex items-center gap-1 text-rose-700 font-medium">
+                    <span className="w-2.5 h-2.5 rounded-full bg-rose-500 ring-2 ring-rose-200" />
+                    Positivo (Baixa)
+                  </span>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <TooltipProvider delayDuration={150}>
+            {filteredCategoryData.map((d) => (
+              <Card key={d.category}>
+                <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-2 pb-3">
+                  <CardTitle className="text-lg font-serif">
+                    {d.category} — {formatCurrency(d.total)}
+                  </CardTitle>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-zinc-500 font-medium">
+                      {d.productBreakdown.length}{' '}
+                      {d.productBreakdown.length === 1 ? 'item' : 'itens'}
+                    </span>
+                    <Badge
+                      variant="secondary"
+                      className={
+                        calculationMode === 'consumption'
+                          ? 'bg-emerald-50 text-emerald-800 border-emerald-200 text-xs'
+                          : 'bg-zinc-100 text-zinc-700 border-zinc-200 text-xs'
+                      }
+                    >
+                      {calculationMode === 'consumption' ? 'Consumo Real' : 'Compras'}
+                    </Badge>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader className="bg-zinc-50">
+                        <TableRow>
+                          <TableHead>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (sortOption === 'name') {
+                                  setSortDirection((p) => (p === 'asc' ? 'desc' : 'asc'))
+                                } else {
+                                  setSortOption('name')
+                                  setSortDirection('asc')
+                                }
+                              }}
+                              className="inline-flex items-center gap-1 text-inherit font-semibold hover:text-zinc-900"
+                            >
+                              Produto
+                              {sortOption === 'name' &&
+                                (sortDirection === 'asc' ? (
+                                  <ArrowUp className="w-3 h-3 text-emerald-700" />
+                                ) : (
+                                  <ArrowDown className="w-3 h-3 text-emerald-700" />
+                                ))}
+                            </button>
+                          </TableHead>
+                          <TableHead>Unidade</TableHead>
                           {calculationMode === 'consumption' ? (
                             <>
-                              <TableCell className="text-right hidden sm:table-cell text-xs text-zinc-600">
-                                {item.hasInventoryData
-                                  ? formatQuantity(item.estoqueInicialQtd, item.product.unit)
-                                  : '—'}
-                              </TableCell>
-                              <TableCell className="text-right hidden sm:table-cell bg-emerald-50/20 text-xs font-semibold text-emerald-800">
-                                +{formatQuantity(item.comprasQtd, item.product.unit)}
-                              </TableCell>
-                              <TableCell className="text-right hidden sm:table-cell text-xs text-zinc-600">
-                                {item.hasInventoryData
-                                  ? formatQuantity(item.estoqueFinalQtd, item.product.unit)
-                                  : '—'}
-                              </TableCell>
-                              <TableCell className="text-right bg-red-50/40">
-                                <span className="inline-flex items-center px-2 py-0.5 rounded-md font-bold text-xs bg-red-100 text-red-700 border border-red-200/70">
-                                  {formatQuantity(item.consumoQtd, item.product.unit)}
-                                </span>
-                              </TableCell>
-                              <TableCell className="text-right font-bold text-emerald-700">
-                                {formatCurrency(item.total)}
-                              </TableCell>
+                              <TableHead className="text-right hidden sm:table-cell">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (sortOption === 'estoqueInicialQtd') {
+                                      setSortDirection((p) => (p === 'desc' ? 'asc' : 'desc'))
+                                    } else {
+                                      setSortOption('estoqueInicialQtd')
+                                      setSortDirection('desc')
+                                    }
+                                  }}
+                                  className="inline-flex items-center justify-end gap-1 text-inherit font-semibold hover:text-zinc-900 ml-auto"
+                                >
+                                  Est. Inicial
+                                  {sortOption === 'estoqueInicialQtd' &&
+                                    (sortDirection === 'desc' ? (
+                                      <ArrowDown className="w-3 h-3 text-emerald-700" />
+                                    ) : (
+                                      <ArrowUp className="w-3 h-3 text-emerald-700" />
+                                    ))}
+                                </button>
+                              </TableHead>
+                              <TableHead className="text-right hidden sm:table-cell bg-emerald-50/60 text-emerald-950 font-semibold">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (sortOption === 'comprasQtd') {
+                                      setSortDirection((p) => (p === 'desc' ? 'asc' : 'desc'))
+                                    } else {
+                                      setSortOption('comprasQtd')
+                                      setSortDirection('desc')
+                                    }
+                                  }}
+                                  className="inline-flex items-center justify-end gap-1 text-emerald-950 font-semibold hover:text-emerald-900 ml-auto"
+                                >
+                                  Compras (+)
+                                  {sortOption === 'comprasQtd' &&
+                                    (sortDirection === 'desc' ? (
+                                      <ArrowDown className="w-3 h-3 text-emerald-700" />
+                                    ) : (
+                                      <ArrowUp className="w-3 h-3 text-emerald-700" />
+                                    ))}
+                                </button>
+                              </TableHead>
+                              <TableHead className="text-right hidden sm:table-cell">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (sortOption === 'estoqueFinalQtd') {
+                                      setSortDirection((p) => (p === 'desc' ? 'asc' : 'desc'))
+                                    } else {
+                                      setSortOption('estoqueFinalQtd')
+                                      setSortDirection('desc')
+                                    }
+                                  }}
+                                  className="inline-flex items-center justify-end gap-1 text-inherit font-semibold hover:text-zinc-900 ml-auto"
+                                >
+                                  Est. Final
+                                  {sortOption === 'estoqueFinalQtd' &&
+                                    (sortDirection === 'desc' ? (
+                                      <ArrowDown className="w-3 h-3 text-emerald-700" />
+                                    ) : (
+                                      <ArrowUp className="w-3 h-3 text-emerald-700" />
+                                    ))}
+                                </button>
+                              </TableHead>
+                              <TableHead className="text-right bg-zinc-100/70 text-zinc-900 font-semibold">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (sortOption === 'consumoQtd') {
+                                      setSortDirection((p) => (p === 'desc' ? 'asc' : 'desc'))
+                                    } else {
+                                      setSortOption('consumoQtd')
+                                      setSortDirection('desc')
+                                    }
+                                  }}
+                                  className="inline-flex items-center justify-end gap-1 text-inherit font-semibold hover:text-zinc-900 ml-auto"
+                                >
+                                  Consumo Físico (−)
+                                  {sortOption === 'consumoQtd' &&
+                                    (sortDirection === 'desc' ? (
+                                      <ArrowDown className="w-3 h-3 text-emerald-700" />
+                                    ) : (
+                                      <ArrowUp className="w-3 h-3 text-emerald-700" />
+                                    ))}
+                                </button>
+                              </TableHead>
+                              <TableHead className="text-right font-semibold">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (sortOption === 'consumoTotal') {
+                                      setSortDirection((p) => (p === 'desc' ? 'asc' : 'desc'))
+                                    } else {
+                                      setSortOption('consumoTotal')
+                                      setSortDirection('desc')
+                                    }
+                                  }}
+                                  className="inline-flex items-center justify-end gap-1 text-inherit font-semibold hover:text-zinc-900 ml-auto"
+                                >
+                                  Consumo (R$)
+                                  {sortOption === 'consumoTotal' &&
+                                    (sortDirection === 'desc' ? (
+                                      <ArrowDown className="w-3 h-3 text-emerald-700" />
+                                    ) : (
+                                      <ArrowUp className="w-3 h-3 text-emerald-700" />
+                                    ))}
+                                </button>
+                              </TableHead>
                             </>
                           ) : (
                             <>
-                              <TableCell className="text-right text-sm">
-                                {formatQuantity(item.comprasQtd, item.product.unit)}
-                              </TableCell>
-                              <TableCell className="text-right text-sm">{item.count}</TableCell>
-                              <TableCell className="text-right font-bold text-emerald-700">
-                                {formatCurrency(item.total)}
-                              </TableCell>
+                              <TableHead className="text-right">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (sortOption === 'comprasQtd') {
+                                      setSortDirection((p) => (p === 'desc' ? 'asc' : 'desc'))
+                                    } else {
+                                      setSortOption('comprasQtd')
+                                      setSortDirection('desc')
+                                    }
+                                  }}
+                                  className="inline-flex items-center justify-end gap-1 text-inherit font-semibold hover:text-zinc-900 ml-auto"
+                                >
+                                  Qtd Comprada
+                                  {sortOption === 'comprasQtd' &&
+                                    (sortDirection === 'desc' ? (
+                                      <ArrowDown className="w-3 h-3 text-emerald-700" />
+                                    ) : (
+                                      <ArrowUp className="w-3 h-3 text-emerald-700" />
+                                    ))}
+                                </button>
+                              </TableHead>
+                              <TableHead className="text-right">Nº Compras</TableHead>
+                              <TableHead className="text-right font-semibold">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (sortOption === 'consumoTotal') {
+                                      setSortDirection((p) => (p === 'desc' ? 'asc' : 'desc'))
+                                    } else {
+                                      setSortOption('consumoTotal')
+                                      setSortDirection('desc')
+                                    }
+                                  }}
+                                  className="inline-flex items-center justify-end gap-1 text-inherit font-semibold hover:text-zinc-900 ml-auto"
+                                >
+                                  Total Compras
+                                  {sortOption === 'consumoTotal' &&
+                                    (sortDirection === 'desc' ? (
+                                      <ArrowDown className="w-3 h-3 text-emerald-700" />
+                                    ) : (
+                                      <ArrowUp className="w-3 h-3 text-emerald-700" />
+                                    ))}
+                                </button>
+                              </TableHead>
                             </>
                           )}
                         </TableRow>
-                      ))}
-                      {d.productBreakdown.length === 0 && (
-                        <TableRow>
-                          <TableCell
-                            colSpan={calculationMode === 'consumption' ? 7 : 5}
-                            className="text-center text-zinc-500"
-                          >
-                            Nenhum registro nesta categoria para o período.
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                      </TableHeader>
+                      <TableBody>
+                        {d.productBreakdown.map((item) => {
+                          const isNegativeConsumo = item.consumoQtd < -0.0001
+                          const isZeroConsumo = Math.abs(item.consumoQtd) <= 0.0001
+                          const isPositiveConsumo = item.consumoQtd > 0.0001
+
+                          return (
+                            <TableRow key={item.product.id}>
+                              <TableCell className="font-medium text-zinc-900">
+                                <div>{item.product.name}</div>
+                                {calculationMode === 'consumption' && !item.hasInventoryData && (
+                                  <div className="text-[11px] text-amber-700 flex items-center gap-1 mt-0.5">
+                                    <Info className="w-3 h-3 shrink-0" />
+                                    <span>Sem contagens no período (baseado em compras)</span>
+                                  </div>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-zinc-500">{item.product.unit}</TableCell>
+
+                              {calculationMode === 'consumption' ? (
+                                <>
+                                  <TableCell className="text-right hidden sm:table-cell text-xs text-zinc-600">
+                                    {item.hasInventoryData
+                                      ? formatQuantity(item.estoqueInicialQtd, item.product.unit)
+                                      : '—'}
+                                  </TableCell>
+                                  <TableCell className="text-right hidden sm:table-cell bg-emerald-50/20 text-xs font-semibold text-emerald-800">
+                                    +{formatQuantity(item.comprasQtd, item.product.unit)}
+                                  </TableCell>
+                                  <TableCell className="text-right hidden sm:table-cell text-xs text-zinc-600">
+                                    {item.hasInventoryData
+                                      ? formatQuantity(item.estoqueFinalQtd, item.product.unit)
+                                      : '—'}
+                                  </TableCell>
+                                  <TableCell
+                                    className={cn(
+                                      'text-right transition-colors',
+                                      isNegativeConsumo && 'bg-emerald-50/50',
+                                      isZeroConsumo && 'bg-zinc-50/60',
+                                      isPositiveConsumo && 'bg-red-50/40',
+                                    )}
+                                  >
+                                    {isNegativeConsumo ? (
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-bold text-xs bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-xs cursor-help">
+                                            <AlertTriangle className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                                            {formatQuantity(item.consumoQtd, item.product.unit)}
+                                          </span>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="left" className="max-w-xs text-xs">
+                                          <p className="font-semibold text-emerald-950">
+                                            Acréscimo no estoque sem compra
+                                          </p>
+                                          <p className="text-zinc-600 mt-0.5">
+                                            O estoque final superou o inicial sem compras
+                                            registradas. Verifique se faltou imputar compras ou
+                                            houve contagem errada.
+                                          </p>
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    ) : isZeroConsumo ? (
+                                      <span className="inline-flex items-center px-2 py-0.5 rounded-md font-medium text-xs bg-zinc-100 text-zinc-600 border border-zinc-200">
+                                        {formatQuantity(0, item.product.unit)}
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center px-2 py-0.5 rounded-md font-bold text-xs bg-red-100 text-red-700 border border-red-200/70">
+                                        {formatQuantity(item.consumoQtd, item.product.unit)}
+                                      </span>
+                                    )}
+                                  </TableCell>
+                                  <TableCell className="text-right font-bold text-emerald-700">
+                                    {formatCurrency(item.total)}
+                                  </TableCell>
+                                </>
+                              ) : (
+                                <>
+                                  <TableCell className="text-right text-sm">
+                                    {formatQuantity(item.comprasQtd, item.product.unit)}
+                                  </TableCell>
+                                  <TableCell className="text-right text-sm">{item.count}</TableCell>
+                                  <TableCell className="text-right font-bold text-emerald-700">
+                                    {formatCurrency(item.total)}
+                                  </TableCell>
+                                </>
+                              )}
+                            </TableRow>
+                          )
+                        })}
+                        {d.productBreakdown.length === 0 && (
+                          <TableRow>
+                            <TableCell
+                              colSpan={calculationMode === 'consumption' ? 7 : 5}
+                              className="text-center text-zinc-500"
+                            >
+                              Nenhum registro nesta categoria para o período.
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </TooltipProvider>
         </>
       )}
     </div>
