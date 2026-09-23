@@ -122,6 +122,7 @@ export default function Products() {
   const [filterCategory, setFilterCategory] = useState<string>('all')
   const [filterArea, setFilterArea] = useState<string>('all')
   const [filterSubarea, setFilterSubarea] = useState<string>('all')
+  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>('all')
   const [searchQuery, setSearchQuery] = useState<string>('')
 
   const { user } = useAuth()
@@ -340,10 +341,15 @@ export default function Products() {
     new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val)
 
   const hasActiveFilter =
-    filterCategory !== 'all' || filterArea !== 'all' || filterSubarea !== 'all'
+    filterCategory !== 'all' ||
+    filterArea !== 'all' ||
+    filterSubarea !== 'all' ||
+    filterStatus !== 'all'
 
   const filteredProducts = products.filter((p) => {
     if (filterCategory !== 'all' && p.category_id !== filterCategory) return false
+    if (filterStatus === 'active' && p.active === false) return false
+    if (filterStatus === 'inactive' && p.active !== false) return false
     const pLevels = levels.filter((l) => l.product_id === p.id)
     if (filterArea !== 'all') {
       const hasArea = pLevels.some(
@@ -797,6 +803,24 @@ export default function Products() {
         </div>
         <div className="flex-1">
           <label className="text-xs font-semibold text-zinc-500 mb-1.5 block px-1">
+            Filtrar por Status
+          </label>
+          <Select
+            value={filterStatus}
+            onValueChange={(val: 'all' | 'active' | 'inactive') => setFilterStatus(val)}
+          >
+            <SelectTrigger className="bg-white border-zinc-200">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos os Status</SelectItem>
+              <SelectItem value="active">Ativos</SelectItem>
+              <SelectItem value="inactive">Inativos</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="flex-1">
+          <label className="text-xs font-semibold text-zinc-500 mb-1.5 block px-1">
             Filtrar por Área
           </label>
           <Select
@@ -861,6 +885,28 @@ export default function Products() {
             className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-700 transition-colors"
           >
             <X className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between text-xs text-zinc-500 px-1 -mt-2">
+        <span>
+          Mostrando {filteredProducts.length}{' '}
+          {filteredProducts.length === 1 ? 'produto' : 'produtos'}
+          {products.length !== filteredProducts.length && ` de ${products.length}`}
+        </span>
+        {hasActiveFilter && (
+          <button
+            type="button"
+            onClick={() => {
+              setFilterCategory('all')
+              setFilterStatus('all')
+              setFilterArea('all')
+              setFilterSubarea('all')
+            }}
+            className="text-emerald-700 hover:underline font-medium"
+          >
+            Limpar filtros
           </button>
         )}
       </div>
