@@ -4,7 +4,7 @@ import { Category } from './inventory'
 export interface Product {
   id: string
   name: string
-  unit: 'kg' | 'litro' | 'unidade' | 'caixa'
+  unit: 'kg' | 'litro' | 'unidade' | 'fração'
   validity_days?: number
   min_stock?: number
   price?: number

@@ -80,7 +80,7 @@ const locationSchema = z.object({
 const schema = z
   .object({
     name: z.string().min(1, 'Nome é obrigatório'),
-    unit: z.enum(['kg', 'litro', 'unidade', 'caixa'] as const),
+    unit: z.enum(['kg', 'litro', 'unidade', 'fração'] as const),
     validity_days: z.number().nullable().optional(),
     min_stock: z.number().nullable().optional(),
     price: z.number().nullable().optional(),
@@ -454,7 +454,7 @@ export default function Products() {
                             <SelectItem value="kg">Kg</SelectItem>
                             <SelectItem value="litro">Litro</SelectItem>
                             <SelectItem value="unidade">Unid</SelectItem>
-                            <SelectItem value="caixa">Caixa</SelectItem>
+                            <SelectItem value="fração">Fração</SelectItem>
                           </SelectContent>
                         </Select>
                         <FormMessage />
