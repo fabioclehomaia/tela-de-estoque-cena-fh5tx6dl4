@@ -332,15 +332,27 @@ export function CmvReport({ selectedCategoryIds = [] }: CmvReportProps) {
                     {formatCurrency(displayedCMVTotal)}
                   </span>
                   {isSingleProductView ? (
-                    <span className="text-xs font-semibold text-emerald-100 bg-emerald-700/60 border border-emerald-400/40 px-2.5 py-1 rounded inline-block">
-                      Consumo físico:{' '}
-                      <span className="text-white font-bold">
-                        {formatQuantity(
-                          displayedBreakdown[0].consumoQtd,
-                          displayedBreakdown[0].product.unit,
-                        )}
+                    <div className="flex flex-wrap md:justify-end gap-1.5 pt-1">
+                      <span className="text-xs font-semibold text-emerald-100 bg-emerald-950/70 border border-emerald-400/50 px-2 py-0.5 rounded inline-flex items-center gap-1">
+                        Entrou:
+                        <span className="text-emerald-200 font-bold">
+                          +
+                          {formatQuantity(
+                            displayedBreakdown[0].comprasQtd,
+                            displayedBreakdown[0].product.unit,
+                          )}
+                        </span>
                       </span>
-                    </span>
+                      <span className="text-xs font-semibold text-rose-100 bg-rose-950/70 border border-rose-400/50 px-2 py-0.5 rounded inline-flex items-center gap-1">
+                        Consumo físico:
+                        <span className="text-rose-200 font-bold">
+                          {formatQuantity(
+                            displayedBreakdown[0].consumoQtd,
+                            displayedBreakdown[0].product.unit,
+                          )}
+                        </span>
+                      </span>
+                    </div>
                   ) : (
                     <span className="text-xs text-emerald-200 block">
                       {displayedBreakdown.length} produto(s) correspondente(s)
@@ -353,8 +365,8 @@ export function CmvReport({ selectedCategoryIds = [] }: CmvReportProps) {
             {/* Faixa integrada: Consumo Físico Real Agrupado por Unidade */}
             <div className="bg-black/20 border-t border-white/10 px-6 py-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <div className="flex items-center gap-2 text-xs font-semibold text-emerald-200 uppercase tracking-wider">
-                  <Scale className="w-4 h-4 shrink-0" />
+                <div className="flex items-center gap-2 text-xs font-semibold text-rose-200 uppercase tracking-wider">
+                  <Scale className="w-4 h-4 shrink-0 text-rose-300" />
                   <span>
                     {productSearch
                       ? 'Consumo Físico dos Produtos Filtrados:'
@@ -363,16 +375,16 @@ export function CmvReport({ selectedCategoryIds = [] }: CmvReportProps) {
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   {consumptionByUnit.length === 0 ? (
-                    <span className="text-xs text-emerald-100/70">Nenhum consumo registrado</span>
+                    <span className="text-xs text-rose-100/70">Nenhum consumo registrado</span>
                   ) : (
                     consumptionByUnit.map((item) => (
                       <span
                         key={item.unit}
-                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/20 text-white text-xs font-semibold backdrop-blur-sm border border-white/15"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-rose-500/25 text-rose-100 text-xs font-semibold backdrop-blur-sm border border-rose-400/30"
                       >
-                        <Package className="w-3 h-3 text-emerald-300 shrink-0" />
-                        <span>{formatQuantity(item.total, item.unit)}</span>
-                        <span className="text-[10px] text-emerald-200/80 font-normal">
+                        <Package className="w-3 h-3 text-rose-300 shrink-0" />
+                        <span className="text-white">{formatQuantity(item.total, item.unit)}</span>
+                        <span className="text-[10px] text-rose-200/80 font-normal">
                           ({item.count} {item.count === 1 ? 'produto' : 'produtos'})
                         </span>
                       </span>
@@ -384,11 +396,11 @@ export function CmvReport({ selectedCategoryIds = [] }: CmvReportProps) {
           </Card>
 
           {/* Resumo de Consumo Físico por Unidade de Medida */}
-          <Card className="border-emerald-200/70 bg-emerald-50/30">
+          <Card className="border-red-200/70 bg-red-50/30">
             <CardHeader className="pb-3">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                <CardTitle className="text-base font-semibold text-emerald-950 flex items-center gap-2">
-                  <Scale className="w-4 h-4 text-emerald-700" />
+                <CardTitle className="text-base font-semibold text-red-950 flex items-center gap-2">
+                  <Scale className="w-4 h-4 text-red-600" />
                   Volume Físico Consumido no Período
                 </CardTitle>
                 <span className="text-xs text-zinc-500">
@@ -406,20 +418,22 @@ export function CmvReport({ selectedCategoryIds = [] }: CmvReportProps) {
                   consumptionByUnit.map((item) => (
                     <div
                       key={item.unit}
-                      className="bg-white rounded-lg p-3.5 border border-emerald-100 shadow-sm"
+                      className="bg-white rounded-lg p-3.5 border border-red-100 shadow-sm"
                     >
                       <div className="flex items-center justify-between text-xs text-zinc-500 mb-1">
-                        <span className="uppercase font-semibold tracking-wider text-emerald-800">
+                        <span className="uppercase font-semibold tracking-wider text-red-700">
                           {item.unit}
                         </span>
                         <span>
                           {item.count} {item.count === 1 ? 'produto' : 'produtos'}
                         </span>
                       </div>
-                      <p className="text-xl font-extrabold text-zinc-900">
+                      <p className="text-xl font-extrabold text-red-600">
                         {formatQuantity(item.total, item.unit)}
                       </p>
-                      <p className="text-[11px] text-zinc-400 mt-0.5">consumidos no período</p>
+                      <p className="text-[11px] text-red-400 font-medium mt-0.5">
+                        consumidos no período
+                      </p>
                     </div>
                   ))
                 )}
@@ -505,10 +519,12 @@ export function CmvReport({ selectedCategoryIds = [] }: CmvReportProps) {
                       <TableHead className="text-right hidden sm:table-cell">
                         Est. Inicial
                       </TableHead>
-                      <TableHead className="text-right hidden sm:table-cell">Compras</TableHead>
+                      <TableHead className="text-right hidden sm:table-cell bg-emerald-50/60 text-emerald-950 font-semibold">
+                        Compras (+)
+                      </TableHead>
                       <TableHead className="text-right hidden sm:table-cell">Est. Final</TableHead>
-                      <TableHead className="text-right bg-emerald-50 text-emerald-950 font-semibold">
-                        Consumo no Período
+                      <TableHead className="text-right bg-red-50 text-red-950 font-semibold">
+                        Consumo no Período (-)
                       </TableHead>
                       <TableHead className="text-right">Volume Gasto (CMV)</TableHead>
                     </TableRow>
@@ -532,6 +548,15 @@ export function CmvReport({ selectedCategoryIds = [] }: CmvReportProps) {
                               </Badge>
                             </span>
                           </div>
+                          {/* Em mobile, exibe resumo rápido de compras (entradas em verde) */}
+                          <div className="sm:hidden mt-1 text-xs text-zinc-600 flex items-center gap-2">
+                            <span>
+                              Entrou:{' '}
+                              <strong className="text-emerald-700 font-semibold">
+                                +{formatQuantity(b.comprasQtd, b.product.unit)}
+                              </strong>
+                            </span>
+                          </div>
                         </TableCell>
                         <TableCell className="hidden sm:table-cell">
                           <Badge variant="outline" className="text-xs">
@@ -544,9 +569,10 @@ export function CmvReport({ selectedCategoryIds = [] }: CmvReportProps) {
                             {formatQuantity(b.estoqueInicialQtd, b.product.unit)}
                           </div>
                         </TableCell>
-                        <TableCell className="text-right hidden sm:table-cell">
+                        <TableCell className="text-right hidden sm:table-cell bg-emerald-50/20">
                           <div className="font-medium">{formatCurrency(b.compras)}</div>
-                          <div className="text-xs text-zinc-500">
+                          <div className="text-xs font-semibold text-emerald-700 inline-flex items-center justify-end gap-0.5">
+                            <span className="font-bold">+</span>
                             {formatQuantity(b.comprasQtd, b.product.unit)}
                           </div>
                         </TableCell>
@@ -556,8 +582,8 @@ export function CmvReport({ selectedCategoryIds = [] }: CmvReportProps) {
                             {formatQuantity(b.estoqueFinalQtd, b.product.unit)}
                           </div>
                         </TableCell>
-                        <TableCell className="text-right bg-emerald-50/40">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-md font-bold text-xs md:text-sm bg-emerald-100 text-emerald-900 border border-emerald-200/60">
+                        <TableCell className="text-right bg-red-50/40">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-md font-bold text-xs md:text-sm bg-red-100 text-red-700 border border-red-200/70">
                             {formatQuantity(b.consumoQtd, b.product.unit)}
                           </span>
                         </TableCell>
