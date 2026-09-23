@@ -336,6 +336,9 @@ export default function Products() {
     }
   }
 
+  const formatCurrency = (val: number) =>
+    new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val)
+
   const hasActiveFilter =
     filterCategory !== 'all' || filterArea !== 'all' || filterSubarea !== 'all'
 
@@ -883,13 +886,22 @@ export default function Products() {
                 </div>
               )}
               <div className="flex flex-col gap-1">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span
                     className={`font-semibold ${p.active === false ? 'text-zinc-600 line-through' : 'text-zinc-900'}`}
                   >
                     {p.name}
                   </span>
                   <span className="text-xs text-zinc-500">({p.unit})</span>
+                  {p.price !== undefined && p.price !== null && p.price > 0 ? (
+                    <span className="font-semibold text-emerald-700 text-sm bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-md">
+                      {formatCurrency(p.price)}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-zinc-400 bg-zinc-100 px-2 py-0.5 rounded-md">
+                      Sem preço
+                    </span>
+                  )}
                   {p.active === false && (
                     <Badge
                       variant="secondary"
