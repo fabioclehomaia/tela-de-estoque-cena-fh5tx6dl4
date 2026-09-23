@@ -45,6 +45,92 @@ export interface CMVResult {
   totalCMV: number
 }
 
+export interface ProductConsumptionDetail {
+  product: Product
+  estoqueInicial: number
+  compras: number
+  estoqueFinal: number
+  consumoValor: number
+  estoqueInicialQtd: number
+  comprasQtd: number
+  estoqueFinalQtd: number
+  consumoQtd: number
+  comprasCount: number
+  hasInventoryData: boolean // true se o produto tem contagens ou registro de nível de estoque
+}
+
+export function calculateProductConsumption(
+  product: Product,
+  compras: Compra[],
+  levels: InventoryLevel[],
+  counts: InventoryCount[],
+  startDate: Date,
+  endDate: Date,
+): ProductConsumptionDetail {
+  const matchingCompras = compras.filter((c) => {
+    if (c.product_id !== product.id) return false
+    const d = new Date(c.date.split(' ')[0])
+    return d >= startDate && d <= endDate
+  })
+
+  const comprasQtd = matchingCompras.reduce((sum, c) => sum + (c.quantity || 0), 0)
+  const productCompras = matchingCompras.reduce(
+    (sum, c) => sum + (c.quantity || 0) * (c.price || 0),
+    0,
+  )
+
+  // Preço unitário base: do produto cadastrado ou preço médio das compras do período
+  let unitPrice = product.price || 0
+  if (!unitPrice && comprasQtd > 0 && productCompras > 0) {
+    unitPrice = productCompras / comprasQtd
+  }
+
+  // Verificar se o produto possui histórico de contagens ou nível de estoque
+  const hasCounts = counts.some((c) => c.product_id === product.id)
+  const hasLevels = levels.some((l) => l.product_id === product.id && (l.quantity ?? 0) > 0)
+  const hasInventoryData = hasCounts || hasLevels
+
+  if (!hasInventoryData) {
+    // Sem nenhuma contagem ou nível de estoque registrado:
+    // O consumo não pode ser inventado. Consideramos apenas compras diretas
+    return {
+      product,
+      estoqueInicial: 0,
+      compras: productCompras,
+      estoqueFinal: 0,
+      consumoValor: productCompras,
+      estoqueInicialQtd: 0,
+      comprasQtd,
+      estoqueFinalQtd: 0,
+      consumoQtd: comprasQtd,
+      comprasCount: matchingCompras.length,
+      hasInventoryData: false,
+    }
+  }
+
+  const estoqueInicialQtd = getStockAtDate(product.id, startDate, levels, counts)
+  const estoqueFinalQtd = getStockAtDate(product.id, endDate, levels, counts)
+
+  const estoqueInicial = estoqueInicialQtd * unitPrice
+  const estoqueFinal = estoqueFinalQtd * unitPrice
+  const consumoQtd = estoqueInicialQtd + comprasQtd - estoqueFinalQtd
+  const consumoValor = estoqueInicial + productCompras - estoqueFinal
+
+  return {
+    product,
+    estoqueInicial,
+    compras: productCompras,
+    estoqueFinal,
+    consumoValor,
+    estoqueInicialQtd,
+    comprasQtd,
+    estoqueFinalQtd,
+    consumoQtd,
+    comprasCount: matchingCompras.length,
+    hasInventoryData: true,
+  }
+}
+
 export function calculateCMV(
   products: Product[],
   compras: Compra[],
