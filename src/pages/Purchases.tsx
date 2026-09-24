@@ -5,8 +5,10 @@ import { z } from 'zod'
 import { format } from 'date-fns'
 import { Plus, Edit, Trash2, ShoppingCart } from 'lucide-react'
 import { getCompras, createCompra, updateCompra, deleteCompra, Compra } from '@/services/compras'
-import { getProducts, Product } from '@/services/products'
+import { getProducts, updateProduct, Product } from '@/services/products'
+import { getInventoryLevels } from '@/services/inventory_levels'
 import { getFornecedores, Fornecedor } from '@/services/fornecedores'
+import { Badge } from '@/components/ui/badge'
 import { useRealtime } from '@/hooks/use-realtime'
 import { extractFieldErrors } from '@/lib/pocketbase/errors'
 import { toast } from 'sonner'
@@ -70,6 +72,9 @@ export default function Purchases() {
     defaultValues,
   })
 
+  const selectedProductId = form.watch('product_id')
+  const selectedProduct = products.find((p) => p.id === selectedProductId)
+
   const loadData = async () => {
     const [c, p, s] = await Promise.all([getCompras(), getProducts(), getFornecedores()])
     setCompras(c)
@@ -90,8 +95,34 @@ export default function Purchases() {
         nota_fiscal: data.nota_fiscal || undefined,
         payment_term: data.payment_term || undefined,
       }
-      if (editingId) await updateCompra(editingId, payload)
-      else await createCompra(payload)
+      if (editingId) {
+        await updateCompra(editingId, payload)
+      } else {
+        await createCompra(payload)
+
+        // Atualizar preço médio ponderado do produto (apenas na criação de nova compra)
+        try {
+          const product = products.find((p) => p.id === data.product_id)
+          if (product) {
+            const allLevels = await getInventoryLevels()
+            const productLevels = allLevels.filter((l) => l.product_id === product.id)
+            const volumeAntigo = productLevels.reduce((sum, l) => sum + (l.quantity || 0), 0)
+            const precoAntigo = product.price || 0
+
+            let weightedPrice = data.price
+            if (volumeAntigo > 0 && precoAntigo > 0) {
+              weightedPrice =
+                (precoAntigo * volumeAntigo + data.price * data.quantity) /
+                (volumeAntigo + data.quantity)
+            }
+            weightedPrice = Math.round(weightedPrice * 100) / 100
+            await updateProduct(product.id, { price: weightedPrice })
+          }
+        } catch (priceErr) {
+          console.error('Falha ao atualizar preço médio ponderado do produto:', priceErr)
+          toast.warning('Compra registrada, mas não foi possível atualizar o preço do produto.')
+        }
+      }
       setIsOpen(false)
       toast.success('Compra registrada com sucesso!')
     } catch (e) {
@@ -229,7 +260,17 @@ export default function Purchases() {
                     name="price"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Preço Unitário (R$)</FormLabel>
+                        <FormLabel className="flex items-center gap-2">
+                          <span>Preço Unitário (R$)</span>
+                          {selectedProduct?.unit && (
+                            <Badge
+                              variant="secondary"
+                              className="text-[10px] font-normal px-1.5 py-0"
+                            >
+                              por {selectedProduct.unit}
+                            </Badge>
+                          )}
+                        </FormLabel>
                         <FormControl>
                           <Input
                             type="number"

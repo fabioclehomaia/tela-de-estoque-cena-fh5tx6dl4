@@ -35,6 +35,7 @@ import {
   AlertTriangle,
   Clock,
   ShieldAlert,
+  Package,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -234,7 +235,7 @@ export default function Reports() {
     return map
   }, [counts])
 
-  // Status de frescor de contagem por área (menos de 3 dias = em dia; >= 3 dias ou nunca contada = alerta)
+  // Status de frescor de contagem por área (menos de 7 dias = em dia; >= 7 dias ou nunca contada = alerta)
   const areaFreshnessStatus = useMemo(() => {
     const subareaToArea = new Map<string, string>()
     subareas.forEach((s) => {
@@ -268,7 +269,7 @@ export default function Reports() {
         }
       }
       const daysSince = differenceInCalendarDays(now, lastDate)
-      const isFresh = daysSince < 3
+      const isFresh = daysSince < 7
       return {
         area,
         lastDate,
@@ -439,6 +440,18 @@ export default function Reports() {
     latestCountByProductAndSubarea,
     isSpecificAreaAndSubarea,
   ])
+
+  const summaryStockTotals = useMemo(() => {
+    let totalValue = 0
+    let totalUnits = 0
+    summaryByProduct.forEach((item) => {
+      const product = products.find((p) => p.id === item.id)
+      const unitPrice = product?.price || 0
+      totalValue += item.total * unitPrice
+      totalUnits += item.total
+    })
+    return { totalValue, totalUnits, productCount: summaryByProduct.length }
+  }, [summaryByProduct, products])
 
   // --- SHOPPING LIST TAB DATA ---
   const shoppingList = useMemo(() => {
@@ -1525,12 +1538,12 @@ export default function Reports() {
                           </Badge>
                         </h3>
                         <span className="text-xs text-red-700 font-medium">
-                          Regra: contagem obrigatória a cada 3 dias
+                          Regra: contagem obrigatória a cada 7 dias
                         </span>
                       </div>
                       <p className="text-sm text-red-800">
                         As seguintes áreas do restaurante{' '}
-                        <strong>NÃO foram contadas nos últimos 3 dias</strong> ou nunca receberam
+                        <strong>NÃO foram contadas nos últimos 7 dias</strong> ou nunca receberam
                         contagem:
                       </p>
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-1">
@@ -1559,7 +1572,7 @@ export default function Reports() {
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-emerald-950">
-                      Todas as áreas foram contadas em menos de 3 dias!
+                      Todas as áreas foram contadas em menos de 7 dias!
                     </h3>
                     <p className="text-xs text-emerald-800">
                       O estoque de todas as áreas cadastradas está com o frescor de contagem em dia.
@@ -1577,7 +1590,7 @@ export default function Reports() {
                       Frescor de Contagem por Área
                     </CardTitle>
                     <span className="text-xs text-zinc-500">
-                      Meta: todas as áreas contadas em menos de 3 dias
+                      Meta: todas as áreas contadas em menos de 7 dias
                     </span>
                   </div>
                 </CardHeader>
@@ -1686,6 +1699,67 @@ export default function Reports() {
             </div>
             <span className="text-sm text-zinc-500">{summaryByProduct.length} produtos</span>
           </div>
+          {/* Card de KPI: Totais do Estoque Atual (Reativo aos Filtros) */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Card className="border-zinc-200 bg-white shadow-sm">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+                  Valor Total em Estoque
+                </CardTitle>
+                <div className="p-2 bg-emerald-50 text-emerald-700 rounded-lg">
+                  <DollarSign className="w-4 h-4" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold font-serif text-emerald-900">
+                  {formatCurrency(summaryStockTotals.totalValue)}
+                </div>
+                <p className="text-xs text-zinc-500 mt-1">Baseado no preço unitário cadastrado</p>
+              </CardContent>
+            </Card>
+
+            <Card className="border-zinc-200 bg-white shadow-sm">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+                  Unidades Físicas
+                </CardTitle>
+                <div className="p-2 bg-blue-50 text-blue-700 rounded-lg">
+                  <Layers className="w-4 h-4" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold font-serif text-zinc-900">
+                  {summaryStockTotals.totalUnits.toLocaleString('pt-BR', {
+                    maximumFractionDigits: 2,
+                  })}
+                </div>
+                <p className="text-xs text-zinc-500 mt-1">Soma dos volumes nas áreas filtradas</p>
+              </CardContent>
+            </Card>
+
+            <Card className="border-zinc-200 bg-white shadow-sm">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">
+                  Total de Itens Filtrados
+                </CardTitle>
+                <div className="p-2 bg-purple-50 text-purple-700 rounded-lg">
+                  <Package className="w-4 h-4" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold font-serif text-zinc-900">
+                  {summaryStockTotals.productCount}{' '}
+                  <span className="text-sm font-normal text-zinc-500">
+                    {summaryStockTotals.productCount === 1 ? 'produto' : 'produtos'}
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-500 mt-1">
+                  Produtos que atendem aos filtros atuais
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
           <div className="bg-white rounded-lg border border-zinc-200 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <Table>
