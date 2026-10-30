@@ -2,20 +2,33 @@ import pb from '@/lib/pocketbase/client'
 import { Product } from './products'
 import { Fornecedor } from './fornecedores'
 
+export type CostCategory =
+  | 'CMV'
+  | 'Manutenção predial'
+  | 'Utensílios'
+  | 'Alimentação de funcionários'
+  | 'Limpeza'
+  | 'Descartáveis'
+  | 'Decoração'
+  | 'Operacional'
+
 export interface Compra {
   id: string
-  product_id: string
-  supplier_id: string
+  product_id?: string
+  supplier_id?: string
   quantity: number
   price: number
   nota_fiscal?: string
   payment_term?: string
   date: string
+  description?: string
+  cost_category?: CostCategory
+  is_avulsa?: boolean
   created: string
   updated: string
   expand?: {
-    product_id: Product
-    supplier_id: Fornecedor
+    product_id?: Product
+    supplier_id?: Fornecedor
   }
 }
 

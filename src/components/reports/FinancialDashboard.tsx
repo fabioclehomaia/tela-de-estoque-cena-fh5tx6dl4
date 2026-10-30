@@ -143,15 +143,49 @@ export function FinancialDashboard({ selectedCategoryIds = [] }: FinancialDashbo
           })
         }
 
+        // Compras avulsas que pertencem a esta categoria de custo
+        const catAvulsas = compras.filter((c) => {
+          if (!c.is_avulsa && c.product_id) return false
+          const costCat = c.cost_category || 'CMV'
+          if (costCat !== cat) return false
+          const d = safeDate(c.date)
+          return d >= sStart && d <= sEnd
+        })
+
+        const avulsasBreakdown = catAvulsas.map((c) => {
+          const itemVal = (c.quantity || 1) * (c.price || 0)
+          return {
+            product: {
+              id: `avulsa_${c.id}`,
+              name: c.description ? `(Avulsa) ${c.description}` : '(Compra Avulsa)',
+              unit: 'unidade',
+              active: true,
+              cost_category: cat as any,
+              price: c.price,
+            } as Product,
+            total: itemVal,
+            count: 1,
+            comprasQtd: c.quantity || 1,
+            estoqueInicialQtd: 0,
+            estoqueFinalQtd: 0,
+            consumoQtd: c.quantity || 1,
+            hasInventoryData: false,
+            isAvulsa: true,
+          }
+        })
+
         if (calculationMode === 'purchases') {
-          // MODO 1: Gasto com Compras (comportamento atual preservado)
+          // MODO 1: Gasto com Compras
           const catProductIds = new Set(catProducts.map((p) => p.id))
           const catCompras = compras.filter((c) => {
-            if (!catProductIds.has(c.product_id)) return false
+            if (!c.product_id || !catProductIds.has(c.product_id)) return false
             const d = safeDate(c.date)
             return d >= sStart && d <= sEnd
           })
-          const total = catCompras.reduce((sum, c) => sum + (c.quantity || 0) * (c.price || 0), 0)
+          const produtosTotal = catCompras.reduce(
+            (sum, c) => sum + (c.quantity || 0) * (c.price || 0),
+            0,
+          )
           const productBreakdown = catProducts
             .map((p) => {
               const pCompras = catCompras.filter((c) => c.product_id === p.id)
@@ -169,11 +203,15 @@ export function FinancialDashboard({ selectedCategoryIds = [] }: FinancialDashbo
                 estoqueFinalQtd: 0,
                 consumoQtd: pQtd,
                 hasInventoryData: true,
+                isAvulsa: false,
               }
             })
             .filter((item) => item.total > 0)
 
-          return { category: cat, total, productBreakdown }
+          const allBreakdown = [...productBreakdown, ...avulsasBreakdown]
+          const total = produtosTotal + avulsasBreakdown.reduce((sum, a) => sum + a.total, 0)
+
+          return { category: cat, total, productBreakdown: allBreakdown }
         } else {
           // MODO 2: Consumo Real (Estoque inicial + Compras - Estoque final)
           const productBreakdown = catProducts
@@ -188,12 +226,14 @@ export function FinancialDashboard({ selectedCategoryIds = [] }: FinancialDashbo
                 estoqueFinalQtd: detail.estoqueFinalQtd,
                 consumoQtd: detail.consumoQtd,
                 hasInventoryData: detail.hasInventoryData,
+                isAvulsa: false,
               }
             })
             .filter((item) => item.total !== 0 || item.count > 0 || item.hasInventoryData)
 
-          const total = productBreakdown.reduce((sum, item) => sum + item.total, 0)
-          return { category: cat, total, productBreakdown }
+          const allBreakdown = [...productBreakdown, ...avulsasBreakdown]
+          const total = allBreakdown.reduce((sum, item) => sum + item.total, 0)
+          return { category: cat, total, productBreakdown: allBreakdown }
         }
       })
       .filter((item) => item.total > 0 || item.productBreakdown.length > 0)
@@ -930,13 +970,25 @@ export function FinancialDashboard({ selectedCategoryIds = [] }: FinancialDashbo
                           return (
                             <TableRow key={item.product.id}>
                               <TableCell className="font-medium text-zinc-900">
-                                <div>{item.product.name}</div>
-                                {calculationMode === 'consumption' && !item.hasInventoryData && (
-                                  <div className="text-[11px] text-amber-700 flex items-center gap-1 mt-0.5">
-                                    <Info className="w-3 h-3 shrink-0" />
-                                    <span>Sem contagens no período (baseado em compras)</span>
-                                  </div>
-                                )}
+                                <div className="flex items-center gap-2">
+                                  <span>{item.product.name}</span>
+                                  {(item as any).isAvulsa && (
+                                    <Badge
+                                      variant="outline"
+                                      className="bg-amber-50 text-amber-800 border-amber-300 text-[10px] py-0 px-1.5"
+                                    >
+                                      Avulsa
+                                    </Badge>
+                                  )}
+                                </div>
+                                {calculationMode === 'consumption' &&
+                                  !item.hasInventoryData &&
+                                  !(item as any).isAvulsa && (
+                                    <div className="text-[11px] text-amber-700 flex items-center gap-1 mt-0.5">
+                                      <Info className="w-3 h-3 shrink-0" />
+                                      <span>Sem contagens no período (baseado em compras)</span>
+                                    </div>
+                                  )}
                               </TableCell>
                               <TableCell className="text-zinc-500">{item.product.unit}</TableCell>
 

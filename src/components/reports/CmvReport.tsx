@@ -431,6 +431,11 @@ export function CmvReport({ selectedCategoryIds = [] }: CmvReportProps) {
               <CardContent className="p-4">
                 <p className="text-sm text-zinc-500">Compras no Período (R$)</p>
                 <p className="text-xl font-bold">{formatCurrency(cmvResult?.totalCompras || 0)}</p>
+                {Boolean(cmvResult?.comprasAvulsasCMV && cmvResult.comprasAvulsasCMV > 0) && (
+                  <p className="text-[11px] text-amber-700 font-medium mt-1">
+                    Inclui {formatCurrency(cmvResult?.comprasAvulsasCMV || 0)} de compras avulsas
+                  </p>
+                )}
               </CardContent>
             </Card>
             <Card>

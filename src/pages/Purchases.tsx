@@ -3,12 +3,14 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { format } from 'date-fns'
-import { Plus, Edit, Trash2, ShoppingCart } from 'lucide-react'
+import { Plus, Edit, Trash2, ShoppingCart, Sparkles, ReceiptText } from 'lucide-react'
 import { getCompras, createCompra, updateCompra, deleteCompra, Compra } from '@/services/compras'
 import { getProducts, updateProduct, Product } from '@/services/products'
 import { getInventoryLevels } from '@/services/inventory_levels'
 import { getFornecedores, Fornecedor } from '@/services/fornecedores'
 import { Badge } from '@/components/ui/badge'
+import { CompraAvulsaModal } from '@/components/compras/CompraAvulsaModal'
+import { InvoiceMirrorModal } from '@/components/compras/InvoiceMirrorModal'
 import { useRealtime } from '@/hooks/use-realtime'
 import { extractFieldErrors } from '@/lib/pocketbase/errors'
 import { toast } from 'sonner'
@@ -65,6 +67,9 @@ export default function Purchases() {
   const [products, setProducts] = useState<Product[]>([])
   const [suppliers, setSuppliers] = useState<Fornecedor[]>([])
   const [isOpen, setIsOpen] = useState(false)
+  const [isAvulsaOpen, setIsAvulsaOpen] = useState(false)
+  const [isAiMirrorOpen, setIsAiMirrorOpen] = useState(false)
+  const [editingAvulsaCompra, setEditingAvulsaCompra] = useState<Compra | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
 
   const form = useForm<z.infer<typeof schema>>({
@@ -132,10 +137,16 @@ export default function Purchases() {
   }
 
   const handleEdit = (c: Compra) => {
+    if (c.is_avulsa || !c.product_id) {
+      setEditingAvulsaCompra(c)
+      setIsAvulsaOpen(true)
+      return
+    }
+
     setEditingId(c.id)
     form.reset({
       product_id: c.product_id,
-      supplier_id: c.supplier_id,
+      supplier_id: c.supplier_id || '',
       quantity: c.quantity || 0,
       price: c.price || 0,
       nota_fiscal: c.nota_fiscal || '',
@@ -165,220 +176,343 @@ export default function Purchases() {
 
   return (
     <div className="p-4 md:p-8 max-w-5xl mx-auto w-full flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold font-serif text-emerald-900">Compras</h1>
-        <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-          <DialogTrigger asChild>
-            <Button
-              className="bg-emerald-600 hover:bg-emerald-700"
-              onClick={() => {
-                setEditingId(null)
-                form.reset(defaultValues)
-              }}
-            >
-              <Plus className="w-4 h-4 mr-2" /> Nova Compra
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[500px]">
-            <DialogHeader>
-              <DialogTitle>{editingId ? 'Editar Compra' : 'Nova Compra'}</DialogTitle>
-            </DialogHeader>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="product_id"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Produto</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecione" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {products.map((p) => (
-                            <SelectItem key={p.id} value={p.id}>
-                              {p.name} ({p.unit})
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="supplier_id"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Fornecedor</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecione" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {suppliers.map((s) => (
-                            <SelectItem key={s.id} value={s.id}>
-                              {s.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <div className="grid grid-cols-2 gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold font-serif text-emerald-900">Compras</h1>
+          <p className="text-xs text-zinc-500 mt-0.5">
+            Gerencie compras de produtos, compras avulsas e leitura de notas fiscais
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Botão Ler Nota com IA */}
+          <Button
+            variant="outline"
+            className="border-emerald-200 text-emerald-800 hover:bg-emerald-50 hover:text-emerald-900 gap-1.5"
+            onClick={() => setIsAiMirrorOpen(true)}
+          >
+            <Sparkles className="w-4 h-4 text-emerald-600" />
+            Ler nota
+          </Button>
+
+          {/* Botão Compra Avulsa */}
+          <Button
+            variant="outline"
+            className="border-zinc-300 text-zinc-700 hover:bg-zinc-50 gap-1.5"
+            onClick={() => {
+              setEditingAvulsaCompra(null)
+              setIsAvulsaOpen(true)
+            }}
+          >
+            <ReceiptText className="w-4 h-4 text-zinc-600" />
+            Compra Avulsa
+          </Button>
+
+          {/* Botão Nova Compra de Produto */}
+          <Dialog open={isOpen} onOpenChange={handleOpenChange}>
+            <DialogTrigger asChild>
+              <Button
+                className="bg-emerald-600 hover:bg-emerald-700"
+                onClick={() => {
+                  setEditingId(null)
+                  form.reset(defaultValues)
+                }}
+              >
+                <Plus className="w-4 h-4 mr-1.5" /> Nova Compra
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[500px]">
+              <DialogHeader>
+                <DialogTitle>{editingId ? 'Editar Compra' : 'Nova Compra'}</DialogTitle>
+              </DialogHeader>
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                   <FormField
                     control={form.control}
-                    name="quantity"
+                    name="product_id"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Quantidade</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="any"
-                            {...field}
-                            value={field.value ?? ''}
-                            onChange={(e) =>
-                              field.onChange(e.target.value === '' ? 0 : Number(e.target.value))
-                            }
-                          />
-                        </FormControl>
+                        <FormLabel>Produto</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Selecione" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {products.map((p) => (
+                              <SelectItem key={p.id} value={p.id}>
+                                {p.name} ({p.unit})
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
                   <FormField
                     control={form.control}
-                    name="price"
+                    name="supplier_id"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel className="flex items-center gap-2">
-                          <span>Preço Unitário (R$)</span>
-                          {selectedProduct?.unit && (
-                            <Badge
-                              variant="secondary"
-                              className="text-[10px] font-normal px-1.5 py-0"
-                            >
-                              por {selectedProduct.unit}
-                            </Badge>
-                          )}
-                        </FormLabel>
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="any"
-                            {...field}
-                            value={field.value ?? ''}
-                            onChange={(e) =>
-                              field.onChange(e.target.value === '' ? 0 : Number(e.target.value))
-                            }
-                          />
-                        </FormControl>
+                        <FormLabel>Fornecedor</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Selecione" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {suppliers.map((s) => (
+                              <SelectItem key={s.id} value={s.id}>
+                                {s.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="quantity"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Quantidade</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              step="any"
+                              {...field}
+                              value={field.value ?? ''}
+                              onChange={(e) =>
+                                field.onChange(e.target.value === '' ? 0 : Number(e.target.value))
+                              }
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="price"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="flex items-center gap-2">
+                            <span>Preço Unitário (R$)</span>
+                            {selectedProduct?.unit && (
+                              <Badge
+                                variant="secondary"
+                                className="text-[10px] font-normal px-1.5 py-0"
+                              >
+                                por {selectedProduct.unit}
+                              </Badge>
+                            )}
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              step="any"
+                              {...field}
+                              value={field.value ?? ''}
+                              onChange={(e) =>
+                                field.onChange(e.target.value === '' ? 0 : Number(e.target.value))
+                              }
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="nota_fiscal"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Nota Fiscal</FormLabel>
+                          <FormControl>
+                            <Input {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="payment_term"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Condição de Pagamento</FormLabel>
+                          <FormControl>
+                            <Input placeholder="Ex: 30 dias" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
                   <FormField
                     control={form.control}
-                    name="nota_fiscal"
+                    name="date"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Nota Fiscal</FormLabel>
+                        <FormLabel>Data</FormLabel>
                         <FormControl>
-                          <Input {...field} />
+                          <Input type="date" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
-                  <FormField
-                    control={form.control}
-                    name="payment_term"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Condição de Pagamento</FormLabel>
-                        <FormControl>
-                          <Input placeholder="Ex: 30 dias" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-                <FormField
-                  control={form.control}
-                  name="date"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Data</FormLabel>
-                      <FormControl>
-                        <Input type="date" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700">
-                  Salvar
-                </Button>
-              </form>
-            </Form>
-          </DialogContent>
-        </Dialog>
+                  <Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700">
+                    Salvar
+                  </Button>
+                </form>
+              </Form>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
       <div className="grid gap-3">
-        {compras.map((c) => (
-          <div
-            key={c.id}
-            className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-white border border-zinc-200 rounded-lg shadow-sm gap-3"
-          >
-            <div className="flex flex-col gap-1">
-              <div className="flex items-center gap-2">
-                <span className="font-semibold text-zinc-900">{c.expand?.product_id?.name}</span>
-                <span className="text-xs text-zinc-500">
-                  {c.quantity} {c.expand?.product_id?.unit} × {formatCurrency(c.price)}
-                </span>
+        {compras.map((c) => {
+          const isAvulsa = Boolean(c.is_avulsa || !c.product_id)
+          const valorTotal = (c.quantity || 1) * (c.price || 0)
+
+          return (
+            <div
+              key={c.id}
+              className={`flex flex-col sm:flex-row sm:items-center justify-between p-4 border rounded-lg shadow-sm gap-3 transition-colors ${
+                isAvulsa ? 'bg-amber-50/40 border-amber-200' : 'bg-white border-zinc-200'
+              }`}
+            >
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {isAvulsa ? (
+                    <>
+                      <Badge
+                        variant="outline"
+                        className="bg-amber-100 text-amber-900 border-amber-300 font-semibold text-xs"
+                      >
+                        Avulsa
+                      </Badge>
+                      <span className="font-semibold text-zinc-900">
+                        {c.description || 'Compra avulsa'}
+                      </span>
+                      {c.cost_category && (
+                        <Badge
+                          variant="secondary"
+                          className="text-[11px] bg-zinc-100 text-zinc-700"
+                        >
+                          {c.cost_category}
+                        </Badge>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-semibold text-zinc-900">
+                        {c.expand?.product_id?.name || 'Produto'}
+                      </span>
+                      <span className="text-xs text-zinc-500">
+                        {c.quantity} {c.expand?.product_id?.unit || 'un'} ×{' '}
+                        {formatCurrency(c.price)}
+                      </span>
+                    </>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-3 text-xs text-zinc-500">
+                  {c.expand?.supplier_id?.name ? (
+                    <span>{c.expand.supplier_id.name}</span>
+                  ) : isAvulsa ? (
+                    <span className="italic text-zinc-400">Sem fornecedor</span>
+                  ) : null}
+                  <span>{c.date ? format(new Date(c.date.split(' ')[0]), 'dd/MM/yyyy') : ''}</span>
+                  {c.nota_fiscal && <span>NF: {c.nota_fiscal}</span>}
+                  {c.payment_term && <span>Pag: {c.payment_term}</span>}
+                </div>
               </div>
-              <div className="flex flex-wrap gap-3 text-xs text-zinc-500">
-                <span>{c.expand?.supplier_id?.name}</span>
-                <span>{c.date ? format(new Date(c.date), 'dd/MM/yyyy') : ''}</span>
-                {c.nota_fiscal && <span>NF: {c.nota_fiscal}</span>}
-                {c.payment_term && <span>Pag: {c.payment_term}</span>}
+              <div className="flex items-center gap-3">
+                <span className="font-bold text-emerald-700">{formatCurrency(valorTotal)}</span>
+                <Button size="icon" variant="ghost" onClick={() => handleEdit(c)}>
+                  <Edit className="w-4 h-4 text-zinc-500" />
+                </Button>
+                <Button size="icon" variant="ghost" onClick={() => handleDelete(c.id)}>
+                  <Trash2 className="w-4 h-4 text-red-500" />
+                </Button>
               </div>
             </div>
-            <div className="flex items-center gap-3">
-              <span className="font-bold text-emerald-700">
-                {formatCurrency(c.quantity * c.price)}
-              </span>
-              <Button size="icon" variant="ghost" onClick={() => handleEdit(c)}>
-                <Edit className="w-4 h-4 text-zinc-500" />
-              </Button>
-              <Button size="icon" variant="ghost" onClick={() => handleDelete(c.id)}>
-                <Trash2 className="w-4 h-4 text-red-500" />
-              </Button>
-            </div>
-          </div>
-        ))}
+          )
+        })}
         {compras.length === 0 && (
-          <div className="text-center py-16 flex flex-col items-center text-zinc-500 bg-white rounded-xl border border-dashed border-zinc-200">
+          <div className="text-center py-16 flex flex-col items-center text-zinc-500 bg-white rounded-xl border border-dashed border-zinc-200 p-6">
             <ShoppingCart className="w-12 h-12 mb-3 text-zinc-300" />
             <p className="font-medium text-zinc-700 mb-1">Nenhuma compra registrada</p>
-            <p className="text-sm text-zinc-400">
-              Registre compras de produtos para análise de CMV.
+            <p className="text-sm text-zinc-400 max-w-sm mb-4">
+              Registre compras com produtos vinculados, registre compras avulsas ou use "Ler nota"
+              para importar notas fiscais com IA.
             </p>
+            <div className="flex flex-wrap gap-2 justify-center">
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-emerald-200 text-emerald-800 hover:bg-emerald-50"
+                onClick={() => setIsAiMirrorOpen(true)}
+              >
+                <Sparkles className="w-3.5 h-3.5 mr-1 text-emerald-600" />
+                Ler nota com IA
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setEditingAvulsaCompra(null)
+                  setIsAvulsaOpen(true)
+                }}
+              >
+                <ReceiptText className="w-3.5 h-3.5 mr-1" />
+                Compra avulsa
+              </Button>
+              <Button
+                size="sm"
+                className="bg-emerald-600 hover:bg-emerald-700"
+                onClick={() => {
+                  setEditingId(null)
+                  form.reset(defaultValues)
+                  setIsOpen(true)
+                }}
+              >
+                <Plus className="w-3.5 h-3.5 mr-1" />
+                Nova compra de produto
+              </Button>
+            </div>
           </div>
         )}
       </div>
+
+      {/* Modal Compra Avulsa */}
+      <CompraAvulsaModal
+        open={isAvulsaOpen}
+        onOpenChange={(open) => {
+          setIsAvulsaOpen(open)
+          if (!open) setEditingAvulsaCompra(null)
+        }}
+        editingCompra={editingAvulsaCompra}
+        onSuccess={loadData}
+      />
+
+      {/* Modal Leitura de Nota com IA + Espelho Editável */}
+      <InvoiceMirrorModal
+        open={isAiMirrorOpen}
+        onOpenChange={setIsAiMirrorOpen}
+        products={products}
+        suppliers={suppliers}
+        onSuccess={loadData}
+      />
     </div>
   )
 }

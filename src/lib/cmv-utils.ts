@@ -43,6 +43,8 @@ export interface CMVResult {
   totalCompras: number
   totalFinal: number
   totalCMV: number
+  comprasAvulsasCMV?: number
+  comprasAvulsasCount?: number
 }
 
 export interface ProductConsumptionDetail {
@@ -176,11 +178,29 @@ export function calculateCMV(
     }
   })
 
+  // Compras avulsas cuja fonte de custo seja 'CMV' no período
+  const avulsasCMV = compras.filter((c) => {
+    if (!c.is_avulsa && c.product_id) return false
+    const costCat = c.cost_category || 'CMV'
+    if (costCat !== 'CMV') return false
+    const d = new Date(c.date.split(' ')[0])
+    return d >= startDate && d <= endDate
+  })
+
+  const totalAvulsasCMV = avulsasCMV.reduce((sum, c) => sum + (c.quantity || 1) * (c.price || 0), 0)
+
+  const produtosTotalInicial = breakdown.reduce((s, b) => s + b.estoqueInicial, 0)
+  const produtosTotalCompras = breakdown.reduce((s, b) => s + b.compras, 0)
+  const produtosTotalFinal = breakdown.reduce((s, b) => s + b.estoqueFinal, 0)
+  const produtosTotalCMV = breakdown.reduce((s, b) => s + b.cmv, 0)
+
   return {
     breakdown,
-    totalInicial: breakdown.reduce((s, b) => s + b.estoqueInicial, 0),
-    totalCompras: breakdown.reduce((s, b) => s + b.compras, 0),
-    totalFinal: breakdown.reduce((s, b) => s + b.estoqueFinal, 0),
-    totalCMV: breakdown.reduce((s, b) => s + b.cmv, 0),
+    totalInicial: produtosTotalInicial,
+    totalCompras: produtosTotalCompras + totalAvulsasCMV,
+    totalFinal: produtosTotalFinal,
+    totalCMV: produtosTotalCMV + totalAvulsasCMV,
+    comprasAvulsasCMV: totalAvulsasCMV,
+    comprasAvulsasCount: avulsasCMV.length,
   }
 }
