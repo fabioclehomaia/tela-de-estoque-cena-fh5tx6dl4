@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import {
   format,
   parseISO,
@@ -69,6 +69,7 @@ import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Line, LineChart } from 'recharts'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
+import { getLastCountDateByArea } from '@/services/inventory_counts'
 import { InventoryCount } from '@/services/inventory_counts'
 import { useInventoryCounts } from '@/hooks/use-inventory-counts'
 import { getInventoryLevels, InventoryLevel } from '@/services/inventory_levels'
@@ -106,10 +107,19 @@ export default function Reports() {
   // backend); um filtro de datas mais antigo dispara a busca daquele intervalo.
   const {
     counts,
+    countsLoading,
     ensureRange: ensureCountsRange,
     rangeLoading: countsRangeLoading,
+    countsError,
+    reloadCounts,
   } = useInventoryCounts()
   const [countsRangeRequested, setCountsRangeRequested] = useState(false)
+  // Última contagem REAL de cada área (vinda do servidor), incluindo contagens
+  // anteriores à janela de 60 dias — o painel de frescor usa isso para não
+  // marcar como "Nunca contada" uma área que já foi contada há mais tempo.
+  const [lastCountByArea, setLastCountByArea] = useState<Map<string, string>>(new Map())
+  const lastCountAreasLoadedRef = useRef(false)
+  const lastCountFetchRef = useRef<AbortController | null>(null)
   const [levels, setLevels] = useState<InventoryLevel[]>([])
   const [areas, setAreas] = useState<Area[]>([])
   const [subareas, setSubareas] = useState<Subarea[]>([])
@@ -210,6 +220,23 @@ export default function Reports() {
     categories.find((c) => c.id === id)?.name || 'Desconhecida'
 
   // Restrição de acesso por perfil (employee restrito a áreas/subáreas permitidas)
+  // Busca no servidor a última contagem real de cada área (uma requisição
+  // perPage=1 por área, sort=-created). Roda uma vez por montagem, depois que
+  // as áreas chegam; realtime cobre contagens novas via `counts`.
+  useEffect(() => {
+    if (areas.length === 0) return
+    lastCountFetchRef.current?.abort()
+    const controller = new AbortController()
+    lastCountFetchRef.current = controller
+    getLastCountDateByArea(areas.map((a) => a.id))
+      .then((map) => {
+        if (controller.signal.aborted) return
+        setLastCountByArea(map)
+        lastCountAreasLoadedRef.current = true
+      })
+      .catch(() => {})
+  }, [areas])
+
   const availableAreas = useMemo(() => {
     if (!currentUser) return areas
     if (currentUser.role === 'admin' || currentUser.role === 'manager') return areas
@@ -267,6 +294,9 @@ export default function Reports() {
   }, [counts])
 
   // Status de frescor de contagem por área (menos de 7 dias = em dia; >= 7 dias ou nunca contada = alerta)
+  // Base: a última contagem REAL de cada área vinda do servidor
+  // (getLastCountDateByArea), que cobre contagens anteriores à janela de 60
+  // dias; as contagens carregadas cobrem o que for mais recente que isso.
   const areaFreshnessStatus = useMemo(() => {
     const subareaToArea = new Map<string, string>()
     subareas.forEach((s) => {
@@ -274,6 +304,9 @@ export default function Reports() {
     })
 
     const latestDateByArea = new Map<string, Date>()
+    for (const [aId, created] of lastCountByArea) {
+      latestDateByArea.set(aId, safeDate(created))
+    }
     for (const count of counts) {
       let aId = count.expand?.subarea_id?.expand?.area_id?.id
       if (!aId && count.subarea_id) {
@@ -310,7 +343,7 @@ export default function Reports() {
           daysSince === 0 ? 'Hoje' : daysSince === 1 ? 'Ontem (há 1 dia)' : `Há ${daysSince} dias`,
       }
     })
-  }, [availableAreas, subareas, counts])
+  }, [availableAreas, subareas, counts, lastCountByArea])
 
   const areasNeedingCount = useMemo(() => {
     return areaFreshnessStatus.filter((a) => !a.isFresh)
@@ -993,7 +1026,7 @@ export default function Reports() {
     setActiveShortcut('')
   }
 
-  if (loading) {
+  if (loading || (countsLoading && counts.length === 0)) {
     return (
       <div className="flex h-[50vh] items-center justify-center w-full">
         <Loader2 className="w-8 h-8 animate-spin text-emerald-800" />
@@ -1022,6 +1055,28 @@ export default function Reports() {
           <Loader2 className="w-4 h-4 animate-spin shrink-0" />
           Buscando contagens do histórico para o período selecionado (isso pode levar alguns
           segundos)...
+        </div>
+      )}
+
+      {countsError && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800 shadow-sm">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-red-600" />
+            <div>
+              <p className="font-semibold">Erro ao carregar contagens de estoque</p>
+              <p className="text-xs mt-0.5">
+                {countsError} Os dados de contagem podem estar incompletos nesta tela.
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0 border-red-300 text-red-800 hover:bg-red-100"
+            onClick={reloadCounts}
+          >
+            Tentar novamente
+          </Button>
         </div>
       )}
 

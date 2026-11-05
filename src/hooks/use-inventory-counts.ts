@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { format, subDays } from 'date-fns'
 import type { RecordModel, RecordSubscription } from 'pocketbase'
+import { ClientResponseError } from 'pocketbase'
 
 import { getInventoryCountsRange, InventoryCount } from '@/services/inventory_counts'
 import { useRealtime } from '@/hooks/use-realtime'
@@ -18,12 +19,15 @@ const DEFAULT_WINDOW_DAYS = 60
  *   `ensureRange(startIso)` — também com filtro no servidor.
  * - Tempo real: incremental. Cada evento adiciona/atualiza/remove apenas o
  *   registro que mudou, sem recarregar o histórico inteiro.
+ * - Erros NUNCA são engolidos: ficam em `error` para a tela exibir um aviso
+ *   (banner) com opção de nova tentativa (`reload`).
  */
 export function useInventoryCounts(enabled = true) {
   const [counts, setCounts] = useState<InventoryCount[]>([])
   const [loading, setLoading] = useState(true)
   const [rangeLoading, setRangeLoading] = useState(false)
   const [coveredFrom, setCoveredFrom] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const earliestRef = useRef<string | null>(null)
   const chainRef = useRef<Promise<void>>(Promise.resolve())
 
@@ -38,47 +42,61 @@ export function useInventoryCounts(enabled = true) {
     })
   }, [])
 
+  const describeError = (e: unknown) =>
+    e instanceof ClientResponseError && e.message ? e.message : 'Erro de rede ao buscar contagens.'
+
+  // Janela padrão: últimos 60 dias, filtrados no servidor.
+  const loadWindow = useCallback(async () => {
+    setLoading(true)
+    const from = format(subDays(new Date(), DEFAULT_WINDOW_DAYS), DAY_FMT)
+    try {
+      const res = await getInventoryCountsRange(from)
+      mergeRecords(res)
+      earliestRef.current = from
+      setCoveredFrom(from)
+      setError(null)
+    } catch (e) {
+      setError(describeError(e))
+    } finally {
+      setLoading(false)
+    }
+  }, [mergeRecords])
+
   useEffect(() => {
     if (!enabled) return
-    let cancelled = false
-    const from = format(subDays(new Date(), DEFAULT_WINDOW_DAYS), DAY_FMT)
-    getInventoryCountsRange(from)
-      .then((res) => {
-        if (cancelled) return
-        mergeRecords(res)
-        earliestRef.current = from
-        setCoveredFrom(from)
-      })
-      .catch(() => {})
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [enabled, mergeRecords])
+    void loadWindow()
+  }, [enabled, loadWindow])
 
   // Busca sob demanda o intervalo entre a data pedida e o que já está carregado.
   // Chamadas em sequência são serializadas para não disparar buscas concorrentes.
-  const ensureRange = useCallback((startIso: string) => {
-    if (!startIso) return
-    chainRef.current = chainRef.current.then(async () => {
-      const earliest = earliestRef.current
-      if (earliest && startIso >= earliest) return // intervalo já coberto
-      const upper = earliest ?? format(new Date(), DAY_FMT)
-      setRangeLoading(true)
-      try {
-        const res = await getInventoryCountsRange(startIso, upper)
-        mergeRecords(res)
-        earliestRef.current = startIso
-        setCoveredFrom(startIso)
-      } catch {
-        // falha silenciosa: os dados já carregados continuam válidos
-      } finally {
-        setRangeLoading(false)
-      }
-    })
-  }, [])
+  const ensureRange = useCallback(
+    (startIso: string) => {
+      if (!startIso) return
+      chainRef.current = chainRef.current.then(async () => {
+        const earliest = earliestRef.current
+        if (earliest && startIso >= earliest) return // intervalo já coberto
+        const upper = earliest ?? format(new Date(), DAY_FMT)
+        setRangeLoading(true)
+        try {
+          const res = await getInventoryCountsRange(startIso, upper)
+          mergeRecords(res)
+          earliestRef.current = startIso
+          setCoveredFrom(startIso)
+          setError(null)
+        } catch (e) {
+          setError(describeError(e))
+        } finally {
+          setRangeLoading(false)
+        }
+      })
+    },
+    [mergeRecords],
+  )
+
+  // Nova tentativa: recarrega a janela padrão de 60 dias do servidor.
+  const reload = useCallback(() => {
+    chainRef.current = chainRef.current.then(() => loadWindow())
+  }, [loadWindow])
 
   // Tempo real incremental: aplica somente o registro que mudou
   useRealtime<RecordModel & Partial<InventoryCount>>(
@@ -93,7 +111,17 @@ export function useInventoryCounts(enabled = true) {
     enabled,
   )
 
-  return { counts, loading, rangeLoading, coveredFrom, ensureRange }
+  // Aliases usados pelas telas: countsLoading/countsError/reloadCounts deixam
+  // claro que se tratam das contagens de estoque.
+  return {
+    counts,
+    countsLoading: loading,
+    rangeLoading,
+    coveredFrom,
+    ensureRange,
+    countsError: error,
+    reloadCounts: reload,
+  }
 }
 
 export default useInventoryCounts

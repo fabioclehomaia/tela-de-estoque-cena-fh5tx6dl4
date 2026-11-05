@@ -46,6 +46,31 @@ export const getInventoryCounts = async (filter: string = '') => {
   })
 }
 
+/**
+ * Última contagem REAL de cada área, direto do servidor (sort=-created,
+ * perPage=1 por área). Usado pelo painel de frescor dos relatórios: uma área
+ * cuja última contagem é anterior à janela de 60 dias não pode aparecer como
+ * "Nunca contada" só porque fora do intervalo carregado.
+ */
+export const getLastCountDateByArea = async (areaIds: string[]): Promise<Map<string, string>> => {
+  const entries = await Promise.all(
+    areaIds.map(async (areaId) => {
+      try {
+        const res = await pb.collection('inventory_counts').getList(1, 1, {
+          filter: `subarea_id.area_id = "${areaId}"`,
+          sort: '-created',
+          fields: 'id,created,subarea_id',
+        })
+        const first = res.items[0]
+        return first ? ([areaId, first.created] as [string, string]) : null
+      } catch {
+        return null
+      }
+    }),
+  )
+  return new Map(entries.filter((e): e is [string, string] => e !== null))
+}
+
 const DAY_FMT = 'yyyy-MM-dd'
 
 /**
