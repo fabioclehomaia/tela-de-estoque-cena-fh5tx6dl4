@@ -38,7 +38,8 @@ import {
 import { getProducts, Product } from '@/services/products'
 import { getCompras, Compra } from '@/services/compras'
 import { getInventoryLevels, InventoryLevel } from '@/services/inventory_levels'
-import { getInventoryCounts, InventoryCount } from '@/services/inventory_counts'
+import { InventoryCount } from '@/services/inventory_counts'
+import { useInventoryCounts } from '@/hooks/use-inventory-counts'
 import { getFaturamentos, Faturamento } from '@/services/faturamento'
 import { calculateCMV } from '@/lib/cmv-utils'
 
@@ -68,9 +69,11 @@ export type CmvSortColumn =
 
 interface CmvReportProps {
   selectedCategoryIds?: string[]
+  /** Informa ao pai o início do período para busca de histórico no servidor. */
+  onPeriodChange?: (startIso: string) => void
 }
 
-export function CmvReport({ selectedCategoryIds = [] }: CmvReportProps) {
+export function CmvReport({ selectedCategoryIds = [], onPeriodChange }: CmvReportProps) {
   const [periodPreset, setPeriodPreset] = useState<PeriodPreset>('last_month')
   const [startDate, setStartDate] = useState(() => {
     const start = startOfMonth(new Date())
@@ -89,27 +92,33 @@ export function CmvReport({ selectedCategoryIds = [] }: CmvReportProps) {
   const [products, setProducts] = useState<Product[]>([])
   const [compras, setCompras] = useState<Compra[]>([])
   const [levels, setLevels] = useState<InventoryLevel[]>([])
-  const [counts, setCounts] = useState<InventoryCount[]>([])
   const [faturamentos, setFaturamentos] = useState<Faturamento[]>([])
+  // Contagens: apenas os últimos 60 dias do servidor + realtime incremental.
+  const { counts } = useInventoryCounts()
 
   useEffect(() => {
     const load = async () => {
-      const [p, c, l, ct, f] = await Promise.all([
+      const [p, c, l, f] = await Promise.all([
         getProducts(),
         getCompras(),
         getInventoryLevels(),
-        getInventoryCounts(),
         getFaturamentos(),
       ])
       setProducts(p)
       setCompras(c)
       setLevels(l)
-      setCounts(ct)
       setFaturamentos(f)
       setLoading(false)
     }
     load()
   }, [])
+
+  // O período padrão ("Último mês") começa dentro dos últimos 60 dias; quando o
+  // usuário escolhe um intervalo mais antigo, o pai busca essas contagens no
+  // servidor (o relatório recalcula automaticamente quando elas chegam).
+  useEffect(() => {
+    if (onPeriodChange && startDate) onPeriodChange(startDate)
+  }, [onPeriodChange, startDate])
 
   // Gerenciador de atalhos de período
   const handlePresetChange = (preset: PeriodPreset) => {

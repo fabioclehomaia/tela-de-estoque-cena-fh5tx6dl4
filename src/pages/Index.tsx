@@ -3,7 +3,7 @@ import { getProducts, Product } from '@/services/products'
 import { getAreas, getSubareas, getCategories, Area, Subarea, Category } from '@/services/inventory'
 import { getInventoryLevels, InventoryLevel } from '@/services/inventory_levels'
 import { getCountOrders, CountOrder, batchSaveCountOrders } from '@/services/count_order'
-import { getInventoryCounts, InventoryCount } from '@/services/inventory_counts'
+import { useInventoryCounts } from '@/hooks/use-inventory-counts'
 import { CountableItem, LastCountInfo } from '@/types/inventory'
 import { InventoryArea } from '@/components/inventory/InventoryArea'
 import { Button } from '@/components/ui/button'
@@ -31,7 +31,9 @@ export default function Index() {
   const [products, setProducts] = useState<Product[]>([])
   const [levels, setLevels] = useState<InventoryLevel[]>([])
   const [countOrders, setCountOrders] = useState<CountOrder[]>([])
-  const [inventoryCounts, setInventoryCounts] = useState<InventoryCount[]>([])
+  // Contagens: apenas últimos 60 dias do servidor + realtime incremental.
+  // O hook se inscreve em 'inventory_counts' por conta própria.
+  const { counts: inventoryCounts } = useInventoryCounts()
   const [loading, setLoading] = useState(true)
 
   const [selectedAreaId, setSelectedAreaId] = useState<string>('_all_')
@@ -44,14 +46,13 @@ export default function Index() {
 
   const loadData = async () => {
     try {
-      const [a, s, c, p, l, co, counts] = await Promise.all([
+      const [a, s, c, p, l, co] = await Promise.all([
         getAreas(),
         getSubareas(),
         getCategories(),
         getProducts(),
         getInventoryLevels(),
         getCountOrders(),
-        getInventoryCounts(),
       ])
       setAreas(a)
       setSubareas(s)
@@ -59,7 +60,6 @@ export default function Index() {
       setProducts(p)
       setLevels(l)
       setCountOrders(co)
-      setInventoryCounts(counts)
     } catch {
       toast.error('Erro ao carregar dados do estoque.')
     } finally {
@@ -71,7 +71,6 @@ export default function Index() {
     loadData()
   }, [])
   useRealtime('inventory_levels', loadData)
-  useRealtime('inventory_counts', loadData)
   useRealtime('count_order', loadData)
 
   const availableAreas = useMemo(() => {

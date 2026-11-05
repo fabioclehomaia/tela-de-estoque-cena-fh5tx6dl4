@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   format,
   parseISO,
@@ -69,7 +69,8 @@ import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Line, LineChart } from 'recharts'
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart'
-import { getInventoryCounts, InventoryCount } from '@/services/inventory_counts'
+import { InventoryCount } from '@/services/inventory_counts'
+import { useInventoryCounts } from '@/hooks/use-inventory-counts'
 import { getInventoryLevels, InventoryLevel } from '@/services/inventory_levels'
 import { getAreas, getSubareas, getCategories, Area, Subarea, Category } from '@/services/inventory'
 import { getUsers, User } from '@/services/users'
@@ -101,7 +102,14 @@ const COST_CATEGORIES = [
 export default function Reports() {
   const { user: currentUser } = useAuth()
   const { toast } = useToast()
-  const [counts, setCounts] = useState<InventoryCount[]>([])
+  // Contagens: por padrão apenas os últimos 60 dias vêm do servidor (filtro no
+  // backend); um filtro de datas mais antigo dispara a busca daquele intervalo.
+  const {
+    counts,
+    ensureRange: ensureCountsRange,
+    rangeLoading: countsRangeLoading,
+  } = useInventoryCounts()
+  const [countsRangeRequested, setCountsRangeRequested] = useState(false)
   const [levels, setLevels] = useState<InventoryLevel[]>([])
   const [areas, setAreas] = useState<Area[]>([])
   const [subareas, setSubareas] = useState<Subarea[]>([])
@@ -136,7 +144,6 @@ export default function Reports() {
       try {
         setLoading(true)
         const [
-          fetchedCounts,
           fetchedAreas,
           fetchedSubareas,
           fetchedCategories,
@@ -145,7 +152,6 @@ export default function Reports() {
           fetchedProducts,
           fetchedPriceHistory,
         ] = await Promise.all([
-          getInventoryCounts(),
           getAreas(),
           getSubareas(),
           getCategories(),
@@ -154,7 +160,6 @@ export default function Reports() {
           getProducts(),
           getProductPriceHistory(),
         ])
-        setCounts(fetchedCounts)
         setAreas(fetchedAreas)
         setSubareas(fetchedSubareas)
         setCategories(fetchedCategories)
@@ -174,6 +179,32 @@ export default function Reports() {
     }
     loadData()
   }, [toast])
+
+  // Quando o usuário pede um período que alcança dados anteriores aos últimos
+  // 60 dias, busca do servidor (com filtro no backend) o intervalo necessário.
+  useEffect(() => {
+    const isCountBackedTab =
+      activeTab === 'history' || activeTab === 'trends' || activeTab === 'prices'
+    if (!isCountBackedTab) return
+    if (!startDate) return
+    const from = format(safeDate(startDate), 'yyyy-MM-dd')
+    if (from > format(subDays(new Date(), 60), 'yyyy-MM-dd')) return
+    setCountsRangeRequested(true)
+    ensureCountsRange(from)
+  }, [activeTab, startDate, ensureCountsRange])
+
+  // Abas CMV e Análise Financeira: relatar o período selecionado para que o
+  // histórico de contagens anterior aos últimos 60 dias seja buscado do servidor.
+  const handleCountsPeriodChange = useCallback(
+    (startIso: string) => {
+      if (!startIso) return
+      const from = format(safeDate(startIso), 'yyyy-MM-dd')
+      if (from > format(subDays(new Date(), 60), 'yyyy-MM-dd')) return
+      setCountsRangeRequested(true)
+      ensureCountsRange(from)
+    },
+    [ensureCountsRange],
+  )
 
   const getCategoryName = (id: string) =>
     categories.find((c) => c.id === id)?.name || 'Desconhecida'
@@ -985,6 +1016,14 @@ export default function Reports() {
           <Download className="w-4 h-4 mr-2" /> Exportar
         </Button>
       </div>
+
+      {countsRangeRequested && countsRangeLoading && (
+        <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">
+          <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+          Buscando contagens do histórico para o período selecionado (isso pode levar alguns
+          segundos)...
+        </div>
+      )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <div className="w-full overflow-x-auto pb-1 mb-6 -mx-4 px-4 sm:mx-0 sm:px-0">
@@ -2305,11 +2344,17 @@ export default function Reports() {
         </TabsContent>
 
         <TabsContent value="cmv">
-          <CmvReport selectedCategoryIds={selectedCategoryIds} />
+          <CmvReport
+            selectedCategoryIds={selectedCategoryIds}
+            onPeriodChange={handleCountsPeriodChange}
+          />
         </TabsContent>
 
         <TabsContent value="financial">
-          <FinancialDashboard selectedCategoryIds={selectedCategoryIds} />
+          <FinancialDashboard
+            selectedCategoryIds={selectedCategoryIds}
+            onPeriodChange={handleCountsPeriodChange}
+          />
         </TabsContent>
       </Tabs>
 

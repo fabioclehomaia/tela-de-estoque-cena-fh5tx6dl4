@@ -1,3 +1,5 @@
+import { format } from 'date-fns'
+
 import pb from '@/lib/pocketbase/client'
 
 export interface InventoryCount {
@@ -41,6 +43,32 @@ export const getInventoryCounts = async (filter: string = '') => {
     sort: '-created',
     expand: 'product_id,subarea_id.area_id,user_id',
     filter,
+  })
+}
+
+const DAY_FMT = 'yyyy-MM-dd'
+
+/**
+ * Busca contagens com filtro de data APLICADO NO SERVIDOR (nunca baixa o
+ * histórico completo para filtrar no cliente). Páginas de 1000 registros
+ * (`batch: 1000`): telas padrão (últimos 60 dias) resolvem em 1-2 requisições.
+ * O histórico completo permanece intacto no banco — só não é baixado por padrão.
+ */
+export const getInventoryCountsRange = async (
+  fromIso: string,
+  toIsoExclusive?: string,
+  extraFilter: string = '',
+) => {
+  const filters = [`created >= "${format(fromIso, `${DAY_FMT} 00:00:00.000Z`)}"`]
+  if (toIsoExclusive) {
+    filters.push(`created < "${format(toIsoExclusive, `${DAY_FMT} 00:00:00.000Z`)}"`)
+  }
+  if (extraFilter) filters.push(`(${extraFilter})`)
+  return pb.collection('inventory_counts').getFullList<InventoryCount>({
+    sort: '-created',
+    expand: 'product_id,subarea_id.area_id,user_id',
+    filter: filters.join(' && '),
+    batch: 1000,
   })
 }
 

@@ -41,7 +41,8 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/
 import { getProducts, Product } from '@/services/products'
 import { getCompras, Compra } from '@/services/compras'
 import { getInventoryLevels, InventoryLevel } from '@/services/inventory_levels'
-import { getInventoryCounts, InventoryCount } from '@/services/inventory_counts'
+import { InventoryCount } from '@/services/inventory_counts'
+import { useInventoryCounts } from '@/hooks/use-inventory-counts'
 import { PeriodSelector, PeriodRange } from '@/components/shared/PeriodSelector'
 import { calculateProductConsumption } from '@/lib/cmv-utils'
 
@@ -92,9 +93,14 @@ export type FinancialSortOption =
 
 interface FinancialDashboardProps {
   selectedCategoryIds?: string[]
+  /** Informa ao pai o início do período para busca de histórico no servidor. */
+  onPeriodChange?: (startIso: string) => void
 }
 
-export function FinancialDashboard({ selectedCategoryIds = [] }: FinancialDashboardProps) {
+export function FinancialDashboard({
+  selectedCategoryIds = [],
+  onPeriodChange,
+}: FinancialDashboardProps) {
   const [calculationMode, setCalculationMode] = useState<CalculationMode>('purchases')
   const [productSearch, setProductSearch] = useState('')
   const [sortOption, setSortOption] = useState<FinancialSortOption>('consumoTotal')
@@ -105,24 +111,26 @@ export function FinancialDashboard({ selectedCategoryIds = [] }: FinancialDashbo
   const [products, setProducts] = useState<Product[]>([])
   const [compras, setCompras] = useState<Compra[]>([])
   const [levels, setLevels] = useState<InventoryLevel[]>([])
-  const [counts, setCounts] = useState<InventoryCount[]>([])
+  // Contagens: apenas os últimos 60 dias do servidor + realtime incremental.
+  const { counts } = useInventoryCounts()
 
   useEffect(() => {
     const load = async () => {
-      const [p, c, l, ct] = await Promise.all([
-        getProducts(),
-        getCompras(),
-        getInventoryLevels(),
-        getInventoryCounts(),
-      ])
+      const [p, c, l] = await Promise.all([getProducts(), getCompras(), getInventoryLevels()])
       setProducts(p)
       setCompras(c)
       setLevels(l)
-      setCounts(ct)
       setLoading(false)
     }
     load()
   }, [])
+
+  // O período padrão (semana corrente) fica dentro dos últimos 60 dias; quando o
+  // usuário escolhe um intervalo mais antigo, o pai busca essas contagens no
+  // servidor (o painel recalcula automaticamente quando elas chegam).
+  useEffect(() => {
+    if (onPeriodChange && period.start) onPeriodChange(period.start)
+  }, [onPeriodChange, period.start])
 
   const categoryData = useMemo(() => {
     if (!period.start || !period.end) return []
