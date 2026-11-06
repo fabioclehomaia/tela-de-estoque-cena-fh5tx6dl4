@@ -44,6 +44,7 @@ import { getInventoryLevels, InventoryLevel } from '@/services/inventory_levels'
 import { InventoryCount } from '@/services/inventory_counts'
 import { useInventoryCounts } from '@/hooks/use-inventory-counts'
 import { PeriodSelector, PeriodRange } from '@/components/shared/PeriodSelector'
+import { InactiveProductMark } from '@/components/shared/InactiveProductMark'
 import { calculateProductConsumption } from '@/lib/cmv-utils'
 
 const formatCurrency = (v: number) =>
@@ -979,7 +980,9 @@ export function FinancialDashboard({
                             <TableRow key={item.product.id}>
                               <TableCell className="font-medium text-zinc-900">
                                 <div className="flex items-center gap-2">
-                                  <span>{item.product.name}</span>
+                                  <InactiveProductMark active={item.product.active}>
+                                    {item.product.name}
+                                  </InactiveProductMark>
                                   {(item as any).isAvulsa && (
                                     <Badge
                                       variant="outline"

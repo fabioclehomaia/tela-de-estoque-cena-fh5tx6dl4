@@ -6,6 +6,7 @@ import { createCompra, CostCategory } from '@/services/compras'
 import { updateProduct } from '@/services/products'
 import { getInventoryLevels } from '@/services/inventory_levels'
 import { toast } from 'sonner'
+import { cn } from '@/lib/utils'
 import {
   FileText,
   Camera,
@@ -690,7 +691,15 @@ export function InvoiceMirrorModal({
                               <SelectContent>
                                 {products.map((p) => (
                                   <SelectItem key={p.id} value={p.id}>
-                                    {p.name} ({p.unit})
+                                    <span
+                                      className={cn(
+                                        p.active === false && 'line-through text-zinc-500',
+                                      )}
+                                    >
+                                      {p.name}
+                                      {p.active === false && ' (inativo)'}
+                                    </span>{' '}
+                                    ({p.unit})
                                   </SelectItem>
                                 ))}
                               </SelectContent>

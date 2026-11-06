@@ -9,6 +9,7 @@ import { getProducts, updateProduct, Product } from '@/services/products'
 import { getInventoryLevels } from '@/services/inventory_levels'
 import { getFornecedores, Fornecedor } from '@/services/fornecedores'
 import { Badge } from '@/components/ui/badge'
+import { cn } from '@/lib/utils'
 import { CompraAvulsaModal } from '@/components/compras/CompraAvulsaModal'
 import { InvoiceMirrorModal } from '@/components/compras/InvoiceMirrorModal'
 import { useRealtime } from '@/hooks/use-realtime'
@@ -242,7 +243,13 @@ export default function Purchases() {
                           <SelectContent>
                             {products.map((p) => (
                               <SelectItem key={p.id} value={p.id}>
-                                {p.name} ({p.unit})
+                                <span
+                                  className={cn(p.active === false && 'line-through text-zinc-500')}
+                                >
+                                  {p.name}
+                                  {p.active === false && ' (inativo)'}
+                                </span>{' '}
+                                ({p.unit})
                               </SelectItem>
                             ))}
                           </SelectContent>

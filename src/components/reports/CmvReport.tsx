@@ -36,6 +36,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { getProducts, Product } from '@/services/products'
+import { InactiveProductMark } from '@/components/shared/InactiveProductMark'
 import { getCompras, Compra } from '@/services/compras'
 import { getInventoryLevels, InventoryLevel } from '@/services/inventory_levels'
 import { InventoryCount } from '@/services/inventory_counts'
@@ -733,7 +734,11 @@ export function CmvReport({ selectedCategoryIds = [], onPeriodChange }: CmvRepor
                         return (
                           <TableRow key={b.product.id}>
                             <TableCell className="font-medium text-zinc-900">
-                              <div>{b.product.name}</div>
+                              <div>
+                                <InactiveProductMark active={b.product.active}>
+                                  {b.product.name}
+                                </InactiveProductMark>
+                              </div>
                               <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                                 <span className="text-xs text-zinc-500">
                                   Unidade:{' '}

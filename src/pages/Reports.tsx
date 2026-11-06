@@ -83,6 +83,7 @@ import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 import { CmvReport } from '@/components/reports/CmvReport'
 import { FinancialDashboard } from '@/components/reports/FinancialDashboard'
+import { InactiveProductMark } from '@/components/shared/InactiveProductMark'
 
 const safeDate = (dateStr: string) => parseISO(dateStr.replace(' ', 'T'))
 
@@ -412,6 +413,12 @@ export default function Reports() {
   // --- SUMMARY TAB DATA ---
   const isSpecificAreaAndSubarea = areaId !== '_all_' && subareaId !== '_all_'
 
+  // Status ativo/inativo pelo id do produto (para linhas que só carregam o nome).
+  const getProductActive = useCallback(
+    (productId: string) => products.find((p) => p.id === productId)?.active ?? true,
+    [products],
+  )
+
   const summaryByProduct = useMemo(() => {
     const map = new Map<string, any>()
     products.forEach((p) => {
@@ -430,6 +437,7 @@ export default function Reports() {
         name: p.name,
         unit: p.unit,
         image: p.image,
+        active: p.active,
         categoryId: p.category_id,
         category: p.expand?.category_id?.name || 'Desconhecido',
         total: 0,
@@ -1525,7 +1533,9 @@ export default function Reports() {
                               </div>
                             )}
                             <div>
-                              {product?.name}
+                              <InactiveProductMark active={getProductActive(product?.id ?? '')}>
+                                {product?.name}
+                              </InactiveProductMark>
                               <span className="text-xs text-zinc-500 ml-1">({product?.unit})</span>
                             </div>
                           </div>
@@ -1579,7 +1589,11 @@ export default function Reports() {
                           </div>
                         )}
                         <div>
-                          <h3 className="font-bold text-zinc-900">{product?.name}</h3>
+                          <h3 className="font-bold text-zinc-900">
+                            <InactiveProductMark active={getProductActive(product?.id ?? '')}>
+                              {product?.name}
+                            </InactiveProductMark>
+                          </h3>
                           <p className="text-xs text-zinc-500">
                             {area?.name} • {subarea?.name}
                           </p>
@@ -1903,7 +1917,9 @@ export default function Reports() {
                               </div>
                             )}
                             <div>
-                              {item.name}
+                              <InactiveProductMark active={getProductActive(item.id)}>
+                                {item.name}
+                              </InactiveProductMark>
                               <span className="text-xs text-zinc-500 ml-1">({item.unit})</span>
                             </div>
                           </div>
@@ -2000,7 +2016,9 @@ export default function Reports() {
                             </div>
                           )}
                           <div>
-                            {item.product.name}
+                            <InactiveProductMark active={item.product.active}>
+                              {item.product.name}
+                            </InactiveProductMark>
                             <span className="text-xs text-zinc-500 ml-1">
                               ({item.product.unit})
                             </span>
@@ -2105,7 +2123,9 @@ export default function Reports() {
                             </div>
                           )}
                           <div>
-                            {item.product.name}
+                            <InactiveProductMark active={item.product.active}>
+                              {item.product.name}
+                            </InactiveProductMark>
                             <span className="text-xs text-zinc-500 ml-1">
                               ({item.product.unit})
                             </span>
@@ -2177,7 +2197,9 @@ export default function Reports() {
                                 </div>
                               )}
                               <div>
-                                {item.product.name}
+                                <InactiveProductMark active={item.product.active}>
+                                  {item.product.name}
+                                </InactiveProductMark>
                                 <span className="text-xs text-zinc-500 ml-1">
                                   ({item.product.unit})
                                 </span>
@@ -2344,7 +2366,19 @@ export default function Reports() {
                               }
                             }}
                           />
-                          {p.name}
+                          <span
+                            className={cn(
+                              'flex-1',
+                              p.active === false && 'text-zinc-600 line-through',
+                            )}
+                          >
+                            {p.name}
+                            {p.active === false && (
+                              <span className="ml-1.5 text-[10px] uppercase text-zinc-500">
+                                (inativo)
+                              </span>
+                            )}
+                          </span>
                         </label>
                       ))
                     })()}
@@ -2431,7 +2465,9 @@ export default function Reports() {
                   <ImageIcon className="w-5 h-5 text-zinc-300" />
                 </div>
               )}
-              {selectedProduct?.name}
+              <InactiveProductMark active={getProductActive(selectedProduct.id)}>
+                {selectedProduct.name}
+              </InactiveProductMark>
             </DialogTitle>
             <DialogDescription>Distribuição de estoque por subárea</DialogDescription>
           </DialogHeader>

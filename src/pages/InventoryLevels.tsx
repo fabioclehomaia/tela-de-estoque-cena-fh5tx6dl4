@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { toast } from 'sonner'
+import { cn } from '@/lib/utils'
 import { Save, ArrowLeft, Loader2 } from 'lucide-react'
 
 export default function InventoryLevels() {
@@ -142,7 +143,11 @@ export default function InventoryLevels() {
             <SelectContent>
               {products.map((p) => (
                 <SelectItem key={p.id} value={p.id}>
-                  {p.name} ({p.unit})
+                  <span className={cn(p.active === false && 'line-through text-zinc-500')}>
+                    {p.name}
+                    {p.active === false && ' (inativo)'}
+                  </span>{' '}
+                  ({p.unit})
                 </SelectItem>
               ))}
             </SelectContent>
