@@ -42,26 +42,39 @@ export function useInventoryCounts(enabled = true) {
     })
   }, [])
 
-  const describeError = (e: unknown) =>
-    e instanceof ClientResponseError && e.message ? e.message : 'Erro de rede ao buscar contagens.'
+  const describeError = (e: unknown) => {
+    if (e instanceof ClientResponseError) {
+      if (e.status === 0) return 'Erro de rede ao buscar contagens.'
+      return e.message || `Erro ${e.status} ao buscar contagens.`
+    }
+    // Erros síncronos (ex.: montagem de filtro) carregam a causa real — sem
+    // mascará-los como "erro de rede".
+    return e instanceof Error && e.message ? e.message : 'Erro ao buscar contagens.'
+  }
 
   // Janela padrão: últimos 60 dias, filtrados no servidor.
-  const loadWindow = useCallback(async () => {
-    setLoading(true)
-    const from = format(subDays(new Date(), DEFAULT_WINDOW_DAYS), DAY_FMT)
-    try {
-      const res = await getInventoryCountsRange(from)
-      mergeRecords(res)
-      earliestRef.current = from
-      setCoveredFrom(from)
-      setError(null)
-    } catch (e) {
-      setError(describeError(e))
-    } finally {
-      setLoading(false)
-    }
-  }, [mergeRecords])
+  const loadWindow = useCallback(
+    async (force = false) => {
+      if (force) setError(null) // limpa o banner antes de rebuscar
+      setLoading(true)
+      const from = format(subDays(new Date(), DEFAULT_WINDOW_DAYS), DAY_FMT)
+      try {
+        const res = await getInventoryCountsRange(from)
+        mergeRecords(res)
+        earliestRef.current = from
+        setCoveredFrom(from)
+        setError(null)
+      } catch (e) {
+        setError(describeError(e))
+      } finally {
+        setLoading(false)
+      }
+    },
+    [mergeRecords],
+  )
 
+  const enabledRef = useRef(enabled)
+  enabledRef.current = enabled
   useEffect(() => {
     if (!enabled) return
     void loadWindow()
@@ -95,7 +108,7 @@ export function useInventoryCounts(enabled = true) {
 
   // Nova tentativa: recarrega a janela padrão de 60 dias do servidor.
   const reload = useCallback(() => {
-    chainRef.current = chainRef.current.then(() => loadWindow())
+    chainRef.current = chainRef.current.then(() => loadWindow(true))
   }, [loadWindow])
 
   // Tempo real incremental: aplica somente o registro que mudou

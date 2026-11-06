@@ -1,4 +1,4 @@
-import { format } from 'date-fns'
+import { format, parseISO } from 'date-fns'
 
 import pb from '@/lib/pocketbase/client'
 
@@ -74,19 +74,35 @@ export const getLastCountDateByArea = async (areaIds: string[]): Promise<Map<str
 const DAY_FMT = 'yyyy-MM-dd'
 
 /**
+ * Normaliza uma data (Date ou string "yyyy-MM-dd" / ISO) para o início do dia
+ * em UTC, no formato que o PocketBase espera: "yyyy-MM-dd 00:00:00.000Z".
+ *
+ * Aceitar string é obrigatório: o date-fns `format` lança "Invalid time value"
+ * quando recebe uma string, o que derrubava a montagem do filtro ANTES de
+ * qualquer requisição sair do navegador (as contagens nunca eram buscadas).
+ */
+const toDayStartUtc = (value: string | Date): string => {
+  const d = typeof value === 'string' ? parseISO(value) : value
+  if (Number.isNaN(d.getTime())) {
+    throw new Error(`Data inválida para filtro de contagens: ${String(value)}`)
+  }
+  return format(d, 'yyyy-MM-dd 00:00:00.000') + 'Z'
+}
+
+/**
  * Busca contagens com filtro de data APLICADO NO SERVIDOR (nunca baixa o
  * histórico completo para filtrar no cliente). Páginas de 1000 registros
  * (`batch: 1000`): telas padrão (últimos 60 dias) resolvem em 1-2 requisições.
  * O histórico completo permanece intacto no banco — só não é baixado por padrão.
  */
 export const getInventoryCountsRange = async (
-  fromIso: string,
-  toIsoExclusive?: string,
+  fromIso: string | Date,
+  toIsoExclusive?: string | Date,
   extraFilter: string = '',
 ) => {
-  const filters = [`created >= "${format(fromIso, `${DAY_FMT} 00:00:00.000Z`)}"`]
+  const filters = [`created >= "${toDayStartUtc(fromIso)}"`]
   if (toIsoExclusive) {
-    filters.push(`created < "${format(toIsoExclusive, `${DAY_FMT} 00:00:00.000Z`)}"`)
+    filters.push(`created < "${toDayStartUtc(toIsoExclusive)}"`)
   }
   if (extraFilter) filters.push(`(${extraFilter})`)
   return pb.collection('inventory_counts').getFullList<InventoryCount>({
