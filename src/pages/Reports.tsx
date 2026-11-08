@@ -2465,14 +2465,14 @@ export default function Reports() {
                   <ImageIcon className="w-5 h-5 text-zinc-300" />
                 </div>
               )}
-              <InactiveProductMark active={getProductActive(selectedProduct.id)}>
-                {selectedProduct.name}
+              <InactiveProductMark active={getProductActive(selectedProduct?.id ?? '')}>
+                {selectedProduct?.name ?? 'Produto removido'}
               </InactiveProductMark>
             </DialogTitle>
             <DialogDescription>Distribuição de estoque por subárea</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            {selectedProduct?.breakdown.length === 0 ? (
+            {selectedProduct?.breakdown?.length === 0 ? (
               <p className="text-sm text-zinc-500 text-center py-4">
                 Este produto não possui estoque visível com os filtros atuais.
               </p>
@@ -2497,7 +2497,7 @@ export default function Reports() {
                         <TableCell className="text-right font-medium">
                           {b.quantity}{' '}
                           <span className="text-xs text-zinc-500 font-normal">
-                            {selectedProduct.unit}
+                            {selectedProduct?.unit}
                           </span>
                         </TableCell>
                       </TableRow>

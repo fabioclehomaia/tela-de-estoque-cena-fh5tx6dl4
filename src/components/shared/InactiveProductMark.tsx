@@ -14,11 +14,11 @@ interface InactiveProductMarkProps {
  * altera cálculos, filtros, ordenação ou cores semânticas.
  */
 export function InactiveProductMark({ active, nameClassName, children }: InactiveProductMarkProps) {
-  const inactive = active === false
+  const inactive = active === false && !!children
   return (
     <span className="inline-flex items-center gap-1.5 flex-wrap min-w-0">
       <span className={cn(inactive && 'text-zinc-600 line-through', nameClassName)}>
-        {children}
+        {children || 'Produto removido'}
       </span>
       {inactive && (
         <Badge
