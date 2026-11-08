@@ -13,6 +13,7 @@ import {
   ShoppingCart,
   Truck,
   DollarSign,
+  SlidersHorizontal,
 } from 'lucide-react'
 import {
   Sheet,
@@ -52,6 +53,12 @@ export default function Layout() {
     { path: '/suppliers', label: 'Fornecedores', icon: Truck, roles: ['admin', 'manager'] },
     { path: '/purchases', label: 'Compras', icon: ShoppingCart, roles: ['admin', 'manager'] },
     { path: '/faturamento', label: 'Faturamento', icon: DollarSign, roles: ['admin', 'manager'] },
+    {
+      path: '/stock-adjustments',
+      label: 'Ajuste de Estoque',
+      icon: SlidersHorizontal,
+      roles: ['admin', 'manager'],
+    },
     { path: '/reports', label: 'Relatórios', icon: FileText, roles: ['admin', 'manager'] },
     { path: '/users', label: 'Usuários', icon: Users, roles: ['admin'] },
   ]

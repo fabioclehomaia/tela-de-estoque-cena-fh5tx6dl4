@@ -37,6 +37,8 @@ import {
 } from '@/components/ui/table'
 import { getProducts, Product } from '@/services/products'
 import { InactiveProductMark } from '@/components/shared/InactiveProductMark'
+import { AdjustedProductMark } from '@/components/shared/AdjustedProductMark'
+import { useStockAdjustments } from '@/hooks/use-stock-adjustments'
 import { getCompras, Compra } from '@/services/compras'
 import { getInventoryLevels, InventoryLevel } from '@/services/inventory_levels'
 import { InventoryCount } from '@/services/inventory_counts'
@@ -96,6 +98,7 @@ export function CmvReport({ selectedCategoryIds = [], onPeriodChange }: CmvRepor
   const [faturamentos, setFaturamentos] = useState<Faturamento[]>([])
   // Contagens: apenas os últimos 60 dias do servidor + realtime incremental.
   const { counts } = useInventoryCounts()
+  const { adjustments, loading: adjustmentsLoading } = useStockAdjustments()
 
   useEffect(() => {
     const load = async () => {
@@ -163,6 +166,29 @@ export function CmvReport({ selectedCategoryIds = [], onPeriodChange }: CmvRepor
       safeDate(endDate),
     )
   }, [categoryFilteredProducts, compras, levels, counts, startDate, endDate])
+
+  // CMV TOTAL do período, calculado sobre TODOS os produtos — independe dos
+  // filtros de categoria/busca. É o contexto contra o qual medimos a seleção.
+  const fullCmvResult = useMemo(() => {
+    if (!startDate || !endDate) return null
+    return calculateCMV(products, compras, levels, counts, safeDate(startDate), safeDate(endDate))
+  }, [products, compras, levels, counts, startDate, endDate])
+
+  const hasActiveFilter = selectedCategoryIds.length > 0 || productSearch.trim().length > 0
+
+  // Participação da seleção filtrada (categorias do topo e/ou busca) no CMV total
+  const filterParticipation = useMemo(() => {
+    if (!fullCmvResult || !hasActiveFilter) return null
+    const filteredIds = new Set(categoryFilteredProducts.map((p) => p.id))
+    const query = productSearch.toLowerCase().trim()
+    const sum = fullCmvResult.breakdown.reduce((acc, b) => {
+      const inCategory = filteredIds.size === 0 || filteredIds.has(b.product.id)
+      const matchesSearch = !query || b.product.name.toLowerCase().includes(query)
+      return inCategory && matchesSearch ? acc + b.cmv : acc
+    }, 0)
+    const percent = fullCmvResult.totalCMV > 0 ? (sum / fullCmvResult.totalCMV) * 100 : 0
+    return { sum, percent, total: fullCmvResult.totalCMV }
+  }, [fullCmvResult, categoryFilteredProducts, productSearch, hasActiveFilter])
 
   // Produtos do breakdown filtrados pela lupa/busca por texto de produto específico e reordenados simultaneamente
   const displayedBreakdown = useMemo(() => {
@@ -428,6 +454,37 @@ export function CmvReport({ selectedCategoryIds = [], onPeriodChange }: CmvRepor
               )}
             </div>
           </Card>
+
+          {/* Destaque de PARTICIPAÇÃO da seleção filtrada no CMV TOTAL do período */}
+          {hasActiveFilter && filterParticipation && (
+            <Card className="border-amber-200 bg-amber-50 shadow-sm">
+              <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <div className="p-2 rounded-md bg-amber-100 text-amber-700 shrink-0">
+                    <Info className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-amber-900">
+                      Participação no CMV:{' '}
+                      <span className="text-lg font-bold">
+                        {filterParticipation.percent.toFixed(1)}%
+                      </span>
+                    </p>
+                    <p className="text-xs text-amber-800 mt-0.5">
+                      {formatCurrency(filterParticipation.sum)} de{' '}
+                      {formatCurrency(filterParticipation.total)} do CMV total do período
+                      {' • '}CMV total segue calculado sobre <strong>todos os produtos</strong>
+                    </p>
+                  </div>
+                </div>
+                <span className="text-[11px] text-amber-700/80 sm:text-right shrink-0">
+                  {productSearch
+                    ? `Busca: "${productSearch}"`
+                    : `${selectedCategoryIds.length} categoria(s) selecionada(s)`}
+                </span>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Grid de Balanço de Estoque Monetário */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -734,10 +791,18 @@ export function CmvReport({ selectedCategoryIds = [], onPeriodChange }: CmvRepor
                         return (
                           <TableRow key={b.product.id}>
                             <TableCell className="font-medium text-zinc-900">
-                              <div>
+                              <div className="flex flex-wrap items-center gap-1.5">
                                 <InactiveProductMark active={b.product.active}>
                                   {b.product.name}
                                 </InactiveProductMark>
+                                {!adjustmentsLoading && (
+                                  <AdjustedProductMark
+                                    productId={b.product.id}
+                                    adjustments={adjustments}
+                                    periodStart={startDate}
+                                    periodEnd={endDate}
+                                  />
+                                )}
                               </div>
                               <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                                 <span className="text-xs text-zinc-500">
