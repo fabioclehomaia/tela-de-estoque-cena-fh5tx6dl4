@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { CompraAvulsaModal } from '@/components/compras/CompraAvulsaModal'
 import { InvoiceMirrorModal } from '@/components/compras/InvoiceMirrorModal'
+import { ProductSearchCombobox } from '@/components/compras/ProductSearchCombobox'
 import { useRealtime } from '@/hooks/use-realtime'
 import { extractFieldErrors } from '@/lib/pocketbase/errors'
 import { toast } from 'sonner'
@@ -232,28 +233,21 @@ export default function Purchases() {
                     control={form.control}
                     name="product_id"
                     render={({ field }) => (
-                      <FormItem>
+                      <FormItem className="flex flex-col">
                         <FormLabel>Produto</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Selecione" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {products.map((p) => (
-                              <SelectItem key={p.id} value={p.id}>
-                                <span
-                                  className={cn(p.active === false && 'line-through text-zinc-500')}
-                                >
-                                  {p.name}
-                                  {p.active === false && ' (inativo)'}
-                                </span>{' '}
-                                ({p.unit})
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <FormControl>
+                          <ProductSearchCombobox
+                            products={products}
+                            value={field.value}
+                            onChange={(id) => {
+                              field.onChange(id)
+                              // Se o produto selecionado tiver preço sugerido ou unidade, a UI já reflete via selectedProduct
+                            }}
+                            placeholder="Buscar produto por nome..."
+                            onlyActive={true}
+                            selectedProduct={selectedProduct}
+                          />
+                        </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}

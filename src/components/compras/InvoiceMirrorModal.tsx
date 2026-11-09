@@ -1,9 +1,9 @@
 import { useState, useRef } from 'react'
 import pb from '@/lib/pocketbase/client'
-import { Product } from '@/services/products'
+import { Product, updateProduct } from '@/services/products'
 import { Fornecedor, createFornecedor } from '@/services/fornecedores'
 import { createCompra, CostCategory } from '@/services/compras'
-import { updateProduct } from '@/services/products'
+import { ProductSearchCombobox } from '@/components/compras/ProductSearchCombobox'
 import { getInventoryLevels } from '@/services/inventory_levels'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -60,6 +60,7 @@ export interface ExtractedItem {
   is_avulso: boolean
   product_id?: string
   cost_category: CostCategory
+  inactive_match_warning?: string
 }
 
 interface InvoiceMirrorModalProps {
@@ -208,6 +209,8 @@ export function InvoiceMirrorModal({
         const desc = (item.descricao || '').trim()
         let matchedProductId: string | undefined = undefined
 
+        let inactiveMatchWarning: string | undefined = undefined
+
         if (desc) {
           const lowerDesc = desc.toLowerCase()
           const matched = products.find((p) => {
@@ -215,7 +218,13 @@ export function InvoiceMirrorModal({
             return pName === lowerDesc || lowerDesc.includes(pName) || pName.includes(lowerDesc)
           })
           if (matched) {
-            matchedProductId = matched.id
+            // Se o produto encontrado estiver inativo, não auto-vincula silenciosamente:
+            // sinaliza para revisão do usuário
+            if (matched.active === false) {
+              inactiveMatchWarning = `Produto sugerido "${matched.name}" está inativo. Selecione outro produto ativo ou marque como avulso.`
+            } else {
+              matchedProductId = matched.id
+            }
           }
         }
 
@@ -236,6 +245,7 @@ export function InvoiceMirrorModal({
           is_avulso: !matchedProductId,
           product_id: matchedProductId,
           cost_category: 'CMV',
+          inactive_match_warning: inactiveMatchWarning,
         }
       })
 
@@ -637,7 +647,7 @@ export function InvoiceMirrorModal({
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2 flex-wrap">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="font-bold text-zinc-500 text-[11px]">#{idx + 1}</span>
                           {isLowConfidence && (
                             <Badge
@@ -646,6 +656,15 @@ export function InvoiceMirrorModal({
                             >
                               <AlertTriangle className="w-3 h-3 text-amber-800" />
                               Revisão sugerida
+                            </Badge>
+                          )}
+                          {it.inactive_match_warning && !it.product_id && (
+                            <Badge
+                              variant="secondary"
+                              className="bg-rose-100 text-rose-800 border-rose-300 text-[10px] py-0 px-1.5 flex items-center gap-1"
+                            >
+                              <AlertTriangle className="w-3 h-3 text-rose-700" />
+                              Sugeriu produto inativo (requer seleção)
                             </Badge>
                           )}
                           <label className="flex items-center gap-1.5 cursor-pointer text-xs font-medium text-zinc-700">
@@ -673,37 +692,32 @@ export function InvoiceMirrorModal({
                         {/* Se for avulso, descrição livre + fonte de custo; senão, autocomplete/select de produto */}
                         {!it.is_avulso ? (
                           <div className="sm:col-span-5 space-y-1">
-                            <Label className="text-[11px] text-zinc-500">Vincular a Produto</Label>
-                            <Select
+                            <div className="flex items-center justify-between">
+                              <Label className="text-[11px] text-zinc-500">
+                                Vincular a Produto
+                              </Label>
+                              {it.inactive_match_warning && !it.product_id && (
+                                <span className="text-[10px] text-rose-600 font-medium truncate max-w-[220px]">
+                                  Sugerido inativo
+                                </span>
+                              )}
+                            </div>
+                            <ProductSearchCombobox
+                              products={products}
                               value={it.product_id || ''}
-                              onValueChange={(val) => {
+                              onChange={(val) => {
                                 const p = products.find((prod) => prod.id === val)
                                 updateItem(it.id, {
                                   product_id: val,
                                   descricao: p ? p.name : it.descricao,
                                   unidade: (p?.unit || it.unidade) as any,
+                                  inactive_match_warning: undefined,
                                 })
                               }}
-                            >
-                              <SelectTrigger className="h-8 text-xs bg-white">
-                                <SelectValue placeholder="Selecione um produto cadastrado" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {products.map((p) => (
-                                  <SelectItem key={p.id} value={p.id}>
-                                    <span
-                                      className={cn(
-                                        p.active === false && 'line-through text-zinc-500',
-                                      )}
-                                    >
-                                      {p.name}
-                                      {p.active === false && ' (inativo)'}
-                                    </span>{' '}
-                                    ({p.unit})
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
+                              placeholder="Buscar produto ativo por nome..."
+                              onlyActive={true}
+                              className="h-8 text-xs bg-white"
+                            />
                           </div>
                         ) : (
                           <>
