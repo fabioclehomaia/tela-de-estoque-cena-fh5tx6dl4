@@ -1,18 +1,26 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { format } from 'date-fns'
-import { Plus, Edit, Trash2, ShoppingCart, Sparkles, ReceiptText } from 'lucide-react'
+import { Plus, Edit, Trash2, ShoppingCart, Sparkles, ReceiptText, FilterX } from 'lucide-react'
 import { getCompras, createCompra, updateCompra, deleteCompra, Compra } from '@/services/compras'
 import { getProducts, updateProduct, Product } from '@/services/products'
 import { getInventoryLevels } from '@/services/inventory_levels'
 import { getFornecedores, Fornecedor } from '@/services/fornecedores'
 import { Badge } from '@/components/ui/badge'
-import { cn } from '@/lib/utils'
+import { InactiveProductMark } from '@/components/shared/InactiveProductMark'
 import { CompraAvulsaModal } from '@/components/compras/CompraAvulsaModal'
 import { InvoiceMirrorModal } from '@/components/compras/InvoiceMirrorModal'
 import { ProductSearchCombobox } from '@/components/compras/ProductSearchCombobox'
+import { PurchasesFilterBar } from '@/components/compras/PurchasesFilterBar'
+import {
+  PurchasesFilterState,
+  initialPurchasesFilters,
+  filterCompras,
+  countActiveFilters,
+} from '@/lib/purchases-filter'
+import { downloadPurchasesCsv } from '@/lib/purchases-export'
 import { useRealtime } from '@/hooks/use-realtime'
 import { extractFieldErrors } from '@/lib/pocketbase/errors'
 import { toast } from 'sonner'
@@ -73,6 +81,8 @@ export default function Purchases() {
   const [isAiMirrorOpen, setIsAiMirrorOpen] = useState(false)
   const [editingAvulsaCompra, setEditingAvulsaCompra] = useState<Compra | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [filters, setFilters] = useState<PurchasesFilterState>(initialPurchasesFilters)
+  const [isExporting, setIsExporting] = useState(false)
 
   const form = useForm<z.infer<typeof schema>>({
     resolver: zodResolver(schema),
@@ -94,6 +104,48 @@ export default function Purchases() {
   useRealtime('compras', loadData)
   useRealtime('fornecedores', loadData)
   useRealtime('products', loadData)
+
+  const productsMap = useMemo(() => {
+    const map = new Map<string, Product>()
+    products.forEach((p) => map.set(p.id, p))
+    return map
+  }, [products])
+
+  const suppliersMap = useMemo(() => {
+    const map = new Map<string, Fornecedor>()
+    suppliers.forEach((s) => map.set(s.id, s))
+    return map
+  }, [suppliers])
+
+  const filteredCompras = useMemo(() => {
+    return filterCompras(compras, filters, productsMap, suppliersMap)
+  }, [compras, filters, productsMap, suppliersMap])
+
+  const totalAmountFiltered = useMemo(() => {
+    return filteredCompras.reduce((sum, c) => sum + (c.quantity || 1) * (c.price || 0), 0)
+  }, [filteredCompras])
+
+  const activeFiltersCount = countActiveFilters(filters)
+
+  const handleExportCsv = () => {
+    if (filteredCompras.length === 0) {
+      toast.warning('Nenhuma compra para exportar com os filtros atuais.')
+      return
+    }
+
+    try {
+      setIsExporting(true)
+      downloadPurchasesCsv(filteredCompras, filters, productsMap, suppliersMap)
+      toast.success(
+        `Relatório exportado com sucesso! (${filteredCompras.length} ${filteredCompras.length === 1 ? 'registro' : 'registros'})`,
+      )
+    } catch (err) {
+      console.error('Falha ao exportar relatório de compras:', err)
+      toast.error('Erro ao gerar relatório CSV.')
+    } finally {
+      setIsExporting(false)
+    }
+  }
 
   const onSubmit = async (data: z.infer<typeof schema>) => {
     try {
@@ -380,10 +432,30 @@ export default function Purchases() {
           </Dialog>
         </div>
       </div>
+      {/* Barra de Filtros e Exportação */}
+      {compras.length > 0 && (
+        <PurchasesFilterBar
+          filters={filters}
+          onChange={setFilters}
+          suppliers={suppliers}
+          totalFiltered={filteredCompras.length}
+          totalOriginal={compras.length}
+          totalAmountFiltered={totalAmountFiltered}
+          onExportCsv={handleExportCsv}
+          isExporting={isExporting}
+        />
+      )}
+
       <div className="grid gap-3">
-        {compras.map((c) => {
+        {filteredCompras.map((c) => {
           const isAvulsa = Boolean(c.is_avulsa || !c.product_id)
           const valorTotal = (c.quantity || 1) * (c.price || 0)
+          const product = c.product_id
+            ? productsMap.get(c.product_id) || c.expand?.product_id
+            : undefined
+          const supplier = c.supplier_id
+            ? suppliersMap.get(c.supplier_id) || c.expand?.supplier_id
+            : undefined
 
           return (
             <div
@@ -392,7 +464,7 @@ export default function Purchases() {
                 isAvulsa ? 'bg-amber-50/40 border-amber-200' : 'bg-white border-zinc-200'
               }`}
             >
-              <div className="flex flex-col gap-1">
+              <div className="flex flex-col gap-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   {isAvulsa ? (
                     <>
@@ -416,39 +488,72 @@ export default function Purchases() {
                     </>
                   ) : (
                     <>
-                      <span className="font-semibold text-zinc-900">
-                        {c.expand?.product_id?.name || 'Produto'}
-                      </span>
-                      <span className="text-xs text-zinc-500">
-                        {c.quantity} {c.expand?.product_id?.unit || 'un'} ×{' '}
+                      <InactiveProductMark
+                        active={product?.active}
+                        nameClassName="font-semibold text-zinc-900"
+                      >
+                        {product?.name || c.expand?.product_id?.name || 'Produto'}
+                      </InactiveProductMark>
+                      <span className="text-xs text-zinc-500 whitespace-nowrap">
+                        {c.quantity} {product?.unit || c.expand?.product_id?.unit || 'un'} ×{' '}
                         {formatCurrency(c.price)}
                       </span>
+                      {product?.cost_category && (
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] text-zinc-500 border-zinc-200 font-normal"
+                        >
+                          {product.cost_category}
+                        </Badge>
+                      )}
                     </>
                   )}
                 </div>
-                <div className="flex flex-wrap gap-3 text-xs text-zinc-500">
-                  {c.expand?.supplier_id?.name ? (
-                    <span>{c.expand.supplier_id.name}</span>
+                <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-zinc-500">
+                  {supplier?.name ? (
+                    <span className="font-medium text-zinc-600">{supplier.name}</span>
                   ) : isAvulsa ? (
                     <span className="italic text-zinc-400">Sem fornecedor</span>
                   ) : null}
-                  <span>{c.date ? format(new Date(c.date.split(' ')[0]), 'dd/MM/yyyy') : ''}</span>
-                  {c.nota_fiscal && <span>NF: {c.nota_fiscal}</span>}
+                  <span>
+                    {c.date
+                      ? format(new Date(c.date.split(' ')[0] + 'T00:00:00'), 'dd/MM/yyyy')
+                      : ''}
+                  </span>
+                  {c.nota_fiscal && (
+                    <span className="bg-zinc-100 text-zinc-700 px-1.5 py-0.2 rounded font-mono text-[11px]">
+                      NF: {c.nota_fiscal}
+                    </span>
+                  )}
                   {c.payment_term && <span>Pag: {c.payment_term}</span>}
                 </div>
               </div>
-              <div className="flex items-center gap-3">
-                <span className="font-bold text-emerald-700">{formatCurrency(valorTotal)}</span>
-                <Button size="icon" variant="ghost" onClick={() => handleEdit(c)}>
+              <div className="flex items-center gap-3 shrink-0 self-end sm:self-center">
+                <span className="font-bold text-emerald-700 font-mono text-base">
+                  {formatCurrency(valorTotal)}
+                </span>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => handleEdit(c)}
+                  title="Editar compra"
+                >
                   <Edit className="w-4 h-4 text-zinc-500" />
                 </Button>
-                <Button size="icon" variant="ghost" onClick={() => handleDelete(c.id)}>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => handleDelete(c.id)}
+                  title="Excluir compra"
+                >
                   <Trash2 className="w-4 h-4 text-red-500" />
                 </Button>
               </div>
             </div>
           )
         })}
+
+        {/* Estado vazio quando não há NENHUMA compra cadastrada */}
         {compras.length === 0 && (
           <div className="text-center py-16 flex flex-col items-center text-zinc-500 bg-white rounded-xl border border-dashed border-zinc-200 p-6">
             <ShoppingCart className="w-12 h-12 mb-3 text-zinc-300" />
@@ -491,6 +596,28 @@ export default function Purchases() {
                 Nova compra de produto
               </Button>
             </div>
+          </div>
+        )}
+
+        {/* Estado vazio quando compras existem mas os filtros não retornam nada */}
+        {compras.length > 0 && filteredCompras.length === 0 && (
+          <div className="text-center py-12 flex flex-col items-center text-zinc-500 bg-white rounded-xl border border-dashed border-zinc-200 p-6">
+            <FilterX className="w-10 h-10 mb-2.5 text-zinc-300" />
+            <p className="font-semibold text-zinc-700 mb-1">
+              Nenhuma compra encontrada com os filtros atuais
+            </p>
+            <p className="text-xs text-zinc-400 max-w-md mb-4">
+              Tente ampliar as datas, remover filtros de valor, fornecedor ou nota fiscal para ver
+              mais resultados.
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setFilters(initialPurchasesFilters)}
+              className="text-xs gap-1.5"
+            >
+              Limpar todos os filtros ({activeFiltersCount})
+            </Button>
           </div>
         )}
       </div>
