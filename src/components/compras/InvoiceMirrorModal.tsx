@@ -2,6 +2,9 @@ import { useState, useRef } from 'react'
 import pb from '@/lib/pocketbase/client'
 import { Product, updateProduct } from '@/services/products'
 import { Fornecedor, createFornecedor } from '@/services/fornecedores'
+import { ProductPriceHistory } from '@/services/product_price_history'
+import { PriceVariationAlert } from '@/components/compras/PriceVariationAlert'
+import { checkPriceVariation } from '@/lib/price-variation'
 import { createCompra, CostCategory } from '@/services/compras'
 import { ProductSearchCombobox } from '@/components/compras/ProductSearchCombobox'
 import { getInventoryLevels } from '@/services/inventory_levels'
@@ -68,6 +71,7 @@ interface InvoiceMirrorModalProps {
   onOpenChange: (open: boolean) => void
   products: Product[]
   suppliers: Fornecedor[]
+  priceHistory?: ProductPriceHistory[]
   onSuccess: () => void
 }
 
@@ -76,6 +80,7 @@ export function InvoiceMirrorModal({
   onOpenChange,
   products,
   suppliers,
+  priceHistory,
   onSuccess,
 }: InvoiceMirrorModalProps) {
   const [step, setStep] = useState<'upload' | 'mirror'>('upload')
@@ -687,6 +692,23 @@ export function InvoiceMirrorModal({
                           <Trash2 className="w-3.5 h-3.5" />
                         </Button>
                       </div>
+
+                      {/* Alerta de variação de preço se o item estiver vinculado a produto */}
+                      {(() => {
+                        if (it.is_avulso || !it.product_id) return null
+                        const prod = products.find((p) => p.id === it.product_id)
+                        const variation = checkPriceVariation(it.preco_unitario, prod, priceHistory)
+                        if (!variation.hasVariation) return null
+
+                        return (
+                          <PriceVariationAlert
+                            check={variation}
+                            unit={prod?.unit || it.unidade}
+                            compact={true}
+                            className="mt-1"
+                          />
+                        )
+                      })()}
 
                       <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
                         {/* Se for avulso, descrição livre + fonte de custo; senão, autocomplete/select de produto */}

@@ -8,12 +8,15 @@ import { getCompras, createCompra, updateCompra, deleteCompra, Compra } from '@/
 import { getProducts, updateProduct, Product } from '@/services/products'
 import { getInventoryLevels } from '@/services/inventory_levels'
 import { getFornecedores, Fornecedor } from '@/services/fornecedores'
+import { getProductPriceHistory, ProductPriceHistory } from '@/services/product_price_history'
 import { Badge } from '@/components/ui/badge'
 import { InactiveProductMark } from '@/components/shared/InactiveProductMark'
 import { CompraAvulsaModal } from '@/components/compras/CompraAvulsaModal'
 import { InvoiceMirrorModal } from '@/components/compras/InvoiceMirrorModal'
 import { ProductSearchCombobox } from '@/components/compras/ProductSearchCombobox'
 import { PurchasesFilterBar } from '@/components/compras/PurchasesFilterBar'
+import { PriceVariationAlert } from '@/components/compras/PriceVariationAlert'
+import { checkPriceVariation } from '@/lib/price-variation'
 import {
   PurchasesFilterState,
   initialPurchasesFilters,
@@ -76,6 +79,7 @@ export default function Purchases() {
   const [compras, setCompras] = useState<Compra[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [suppliers, setSuppliers] = useState<Fornecedor[]>([])
+  const [priceHistory, setPriceHistory] = useState<ProductPriceHistory[]>([])
   const [isOpen, setIsOpen] = useState(false)
   const [isAvulsaOpen, setIsAvulsaOpen] = useState(false)
   const [isAiMirrorOpen, setIsAiMirrorOpen] = useState(false)
@@ -90,13 +94,27 @@ export default function Purchases() {
   })
 
   const selectedProductId = form.watch('product_id')
+  const enteredPrice = form.watch('price')
   const selectedProduct = products.find((p) => p.id === selectedProductId)
 
+  const priceVariationCheck = useMemo(() => {
+    return checkPriceVariation(enteredPrice, selectedProduct, priceHistory)
+  }, [enteredPrice, selectedProduct, priceHistory])
+
   const loadData = async () => {
-    const [c, p, s] = await Promise.all([getCompras(), getProducts(), getFornecedores()])
+    const [c, p, s, ph] = await Promise.all([
+      getCompras(),
+      getProducts(),
+      getFornecedores(),
+      getProductPriceHistory().catch((err) => {
+        console.warn('Não foi possível carregar histórico de preços:', err)
+        return []
+      }),
+    ])
     setCompras(c)
     setProducts(p)
     setSuppliers(s)
+    setPriceHistory(ph)
   }
   useEffect(() => {
     loadData()
@@ -104,6 +122,7 @@ export default function Purchases() {
   useRealtime('compras', loadData)
   useRealtime('fornecedores', loadData)
   useRealtime('products', loadData)
+  useRealtime('product_price_history', loadData)
 
   const productsMap = useMemo(() => {
     const map = new Map<string, Product>()
@@ -382,6 +401,12 @@ export default function Purchases() {
                       )}
                     />
                   </div>
+
+                  {/* Alerta de variação de preço > 15% */}
+                  {priceVariationCheck.hasVariation && (
+                    <PriceVariationAlert check={priceVariationCheck} unit={selectedProduct?.unit} />
+                  )}
+
                   <div className="grid grid-cols-2 gap-4">
                     <FormField
                       control={form.control}
@@ -639,6 +664,7 @@ export default function Purchases() {
         onOpenChange={setIsAiMirrorOpen}
         products={products}
         suppliers={suppliers}
+        priceHistory={priceHistory}
         onSuccess={loadData}
       />
     </div>
