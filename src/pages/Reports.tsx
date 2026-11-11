@@ -104,8 +104,10 @@ const COST_CATEGORIES = [
 export default function Reports() {
   const { user: currentUser } = useAuth()
   const { toast } = useToast()
-  // Contagens: por padrão apenas os últimos 60 dias vêm do servidor (filtro no
-  // backend); um filtro de datas mais antigo dispara a busca daquele intervalo.
+  // Contagens: abertura focada no Estoque Atual — só a janela recente (7 dias)
+  // vem do servidor, o mínimo para as colunas "Última Contagem / Responsável".
+  // O histórico completo (60 dias ou intervalo filtrado) é buscado sob demanda,
+  // apenas quando o usuário abre uma sub-aba que precisa dele.
   const {
     counts,
     countsLoading,
@@ -113,7 +115,7 @@ export default function Reports() {
     rangeLoading: countsRangeLoading,
     countsError,
     reloadCounts,
-  } = useInventoryCounts()
+  } = useInventoryCounts(true, 7)
   const [countsRangeRequested, setCountsRangeRequested] = useState(false)
   // Última contagem REAL de cada área (vinda do servidor), incluindo contagens
   // anteriores à janela de 60 dias — o painel de frescor usa isso para não
@@ -128,7 +130,7 @@ export default function Reports() {
   const [users, setUsers] = useState<User[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState('history')
+  const [activeTab, setActiveTab] = useState('summary')
 
   const [startDate, setStartDate] = useState<string>('')
   const [endDate, setEndDate] = useState<string>('')
@@ -145,6 +147,9 @@ export default function Reports() {
   const [exportModalOpen, setExportModalOpen] = useState(false)
   const [exportFormat, setExportFormat] = useState<'csv' | 'pdf' | 'doc'>('pdf')
   const [priceHistory, setPriceHistory] = useState<ProductPriceHistory[]>([])
+  const [priceHistoryLoading, setPriceHistoryLoading] = useState(false)
+  const [priceHistoryLoaded, setPriceHistoryLoaded] = useState(false)
+  const [priceHistoryRequested, setPriceHistoryRequested] = useState(false)
   const [selectedPriceProducts, setSelectedPriceProducts] = useState<string[]>([])
   const [priceSearchQuery, setPriceSearchQuery] = useState('')
   const [selectedCostCategories, setSelectedCostCategories] = useState<string[]>([])
@@ -154,30 +159,22 @@ export default function Reports() {
     const loadData = async () => {
       try {
         setLoading(true)
-        const [
-          fetchedAreas,
-          fetchedSubareas,
-          fetchedCategories,
-          fetchedUsers,
-          fetchedLevels,
-          fetchedProducts,
-          fetchedPriceHistory,
-        ] = await Promise.all([
-          getAreas(),
-          getSubareas(),
-          getCategories(),
-          getUsers(),
-          getInventoryLevels(),
-          getProducts(),
-          getProductPriceHistory(),
-        ])
+        // Abertura: apenas o essencial para o Estoque Atual e a Lista de
+        // Compras. Usuários e histórico de preços ficam sob demanda (aba
+        // Histórico e aba Preços, respectivamente).
+        const [fetchedAreas, fetchedSubareas, fetchedCategories, fetchedLevels, fetchedProducts] =
+          await Promise.all([
+            getAreas(),
+            getSubareas(),
+            getCategories(),
+            getInventoryLevels(),
+            getProducts(),
+          ])
         setAreas(fetchedAreas)
         setSubareas(fetchedSubareas)
         setCategories(fetchedCategories)
-        setUsers(fetchedUsers)
         setLevels(fetchedLevels)
         setProducts(fetchedProducts)
-        setPriceHistory(fetchedPriceHistory)
       } catch (error) {
         toast({
           title: 'Erro',
@@ -191,11 +188,55 @@ export default function Reports() {
     loadData()
   }, [toast])
 
+  // Usuários: necessários na aba Histórico (filtro "Funcionário" e a coluna).
+  const [usersLoaded, setUsersLoaded] = useState(false)
+  const [usersLoading, setUsersLoading] = useState(false)
+  useEffect(() => {
+    if (activeTab !== 'history' || usersLoaded || usersLoading) return
+    setUsersLoading(true)
+    getUsers()
+      .then(setUsers)
+      .catch(() => {})
+      .finally(() => {
+        setUsersLoaded(true)
+        setUsersLoading(false)
+      })
+  }, [activeTab, usersLoaded, usersLoading])
+
+  // Histórico de preços: usado apenas na aba Preços e no bloco "Valor
+  // Consumido por Produto" da aba Tendências. Buscado uma única vez, sob
+  // demanda, com cache (priceHistoryLoaded evita rebuscar ao voltar para a aba).
+  useEffect(() => {
+    if (priceHistoryLoaded || priceHistoryLoading) return
+    const needsPriceHistory = activeTab === 'prices' || activeTab === 'trends'
+    if (!needsPriceHistory) return
+    setPriceHistoryLoading(true)
+    getProductPriceHistory()
+      .then((h) => setPriceHistory(h))
+      .catch(() => {})
+      .finally(() => {
+        setPriceHistoryLoaded(true)
+        setPriceHistoryLoading(false)
+      })
+  }, [activeTab, priceHistoryLoaded, priceHistoryLoading])
+
   // Quando o usuário pede um período que alcança dados anteriores aos últimos
   // 60 dias, busca do servidor (com filtro no backend) o intervalo necessário.
+  // Abas que precisam de mais profundidade do que a janela inicial (7 dias):
+  // ao entrar nelas, estende a cobertura para os últimos 60 dias — uma única
+  // vez, já coberto pelo próprio hook (ensureRange não rebusca o que existe).
   useEffect(() => {
-    const isCountBackedTab =
-      activeTab === 'history' || activeTab === 'trends' || activeTab === 'prices'
+    const isCountBackedTab = activeTab === 'history' || activeTab === 'trends'
+    if (!isCountBackedTab) return
+    setCountsRangeRequested(true)
+    ensureCountsRange(format(subDays(new Date(), 60), 'yyyy-MM-dd'))
+  }, [activeTab, ensureCountsRange])
+
+  // Filtro de datas em aba suportada: se o intervalo pede algo anterior à
+  // cobertura carregada, busca aquele intervalo no servidor. (A aba Preços
+  // filtra histórico de preços, não contagens — não dispara busca de contagens.)
+  useEffect(() => {
+    const isCountBackedTab = activeTab === 'history' || activeTab === 'trends'
     if (!isCountBackedTab) return
     if (!startDate) return
     const from = format(safeDate(startDate), 'yyyy-MM-dd')

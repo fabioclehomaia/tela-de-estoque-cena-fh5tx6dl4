@@ -12,17 +12,21 @@ const DEFAULT_WINDOW_DAYS = 60
 /**
  * Fonte única de contagens de estoque para as telas de Contagem e Relatórios.
  *
- * - Carregamento inicial: SOMENTE os últimos 60 dias, com filtro de `created`
- *   aplicado no servidor (1-2 requisições de até 1000 registros).
+ * - Carregamento inicial: somente a janela de dias configurada pelo caller
+ *   (padrão 60), com filtro de `created` aplicado no servidor. Em telas com
+ *   múltiplas abas (Relatórios) a janela inicial é curta (7 dias) para abrir
+ *   rápido e sem baixar o histórico; as abas que precisam de mais dados pedem
+ *   `ensureRange` explicitamente.
  * - Histórico mais antigo: permanece intacto no banco e só é buscado quando o
- *   usuário seleciona um filtro de datas que alcança período anterior, via
- *   `ensureRange(startIso)` — também com filtro no servidor.
+ *   usuário pede mais profundidade ou seleciona um filtro de datas que alcança
+ *   período anterior, via `ensureRange(startIso)` — com filtro no servidor.
+ *   Cobertura já carregada nunca é encolhida.
  * - Tempo real: incremental. Cada evento adiciona/atualiza/remove apenas o
  *   registro que mudou, sem recarregar o histórico inteiro.
  * - Erros NUNCA são engolidos: ficam em `error` para a tela exibir um aviso
  *   (banner) com opção de nova tentativa (`reload`).
  */
-export function useInventoryCounts(enabled = true) {
+export function useInventoryCounts(enabled = true, initialWindowDays = DEFAULT_WINDOW_DAYS) {
   const [counts, setCounts] = useState<InventoryCount[]>([])
   const [loading, setLoading] = useState(true)
   const [rangeLoading, setRangeLoading] = useState(false)
@@ -30,6 +34,8 @@ export function useInventoryCounts(enabled = true) {
   const [error, setError] = useState<string | null>(null)
   const earliestRef = useRef<string | null>(null)
   const chainRef = useRef<Promise<void>>(Promise.resolve())
+  const initialWindowRef = useRef(initialWindowDays)
+  initialWindowRef.current = initialWindowDays
 
   type PartialCount = Pick<InventoryCount, 'id'> & Partial<InventoryCount>
 
@@ -57,7 +63,10 @@ export function useInventoryCounts(enabled = true) {
     async (force = false) => {
       if (force) setError(null) // limpa o banner antes de rebuscar
       setLoading(true)
-      const from = format(subDays(new Date(), DEFAULT_WINDOW_DAYS), DAY_FMT)
+      const windowFrom = format(subDays(new Date(), initialWindowRef.current), DAY_FMT)
+      // Cobertura mais ampla já carregada nunca é encolhida por um reload.
+      const from =
+        earliestRef.current && earliestRef.current < windowFrom ? earliestRef.current : windowFrom
       try {
         const res = await getInventoryCountsRange(from)
         mergeRecords(res)
@@ -106,9 +115,19 @@ export function useInventoryCounts(enabled = true) {
     [mergeRecords],
   )
 
-  // Nova tentativa: recarrega a janela padrão de 60 dias do servidor.
+  // Nova tentativa: recarrega a janela atualmente coberta (não encolhe a
+  // cobertura já carregada quando a janela inicial é curta).
   const reload = useCallback(() => {
-    chainRef.current = chainRef.current.then(() => loadWindow(true))
+    chainRef.current = chainRef.current.then(() => {
+      const earliest = earliestRef.current
+      if (earliest && earliest < format(subDays(new Date(), initialWindowRef.current), DAY_FMT)) {
+        return loadWindow(true).then(() => {
+          // preserva a cobertura mais ampla já buscada anteriormente
+          if (earliest < earliestRef.current!) earliestRef.current = earliest
+        })
+      }
+      return loadWindow(true)
+    })
   }, [loadWindow])
 
   // Tempo real incremental: aplica somente o registro que mudou
