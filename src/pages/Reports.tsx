@@ -142,7 +142,9 @@ export default function Reports() {
   const [searchQuery, setSearchQuery] = useState('')
 
   const [selectedProduct, setSelectedProduct] = useState<any>(null)
-  const [sortField, setSortField] = useState<'count' | 'name' | 'category' | 'quantity'>('count')
+  const [sortField, setSortField] = useState<'count' | 'name' | 'category' | 'quantity' | 'value'>(
+    'count',
+  )
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
   const [exportModalOpen, setExportModalOpen] = useState(false)
   const [exportFormat, setExportFormat] = useState<'csv' | 'pdf' | 'doc'>('pdf')
@@ -481,6 +483,9 @@ export default function Reports() {
         active: p.active,
         categoryId: p.category_id,
         category: p.expand?.category_id?.name || 'Desconhecido',
+        // Preço unitário cadastrado (0/undefined = sem preço — exibido como "—")
+        price: p.price ?? 0,
+        stockValue: 0,
         total: 0,
         hasMatchingLevel: false,
         breakdown: [],
@@ -514,6 +519,13 @@ export default function Reports() {
 
     let arr = Array.from(map.values())
 
+    // Valor em estoque por linha (quantidade filtrada × preço unitário), na
+    // MESMA fonte usada pelo card "Valor Total em Estoque" (summaryStockTotals),
+    // garantindo que a soma das linhas bata com o total do topo.
+    arr.forEach((i) => {
+      i.stockValue = i.total * (i.price || 0)
+    })
+
     if (areaId !== '_all_' || subareaId !== '_all_') {
       arr = arr.filter((i) => i.hasMatchingLevel)
     }
@@ -531,6 +543,8 @@ export default function Reports() {
         cmp = a.name.localeCompare(b.name)
       } else if (sortField === 'category') {
         cmp = a.category.localeCompare(b.category)
+      } else if (sortField === 'value') {
+        cmp = (a.stockValue || 0) - (b.stockValue || 0)
       } else {
         cmp = a.total - b.total
       }
@@ -558,13 +572,13 @@ export default function Reports() {
     let totalValue = 0
     let totalUnits = 0
     summaryByProduct.forEach((item) => {
-      const product = products.find((p) => p.id === item.id)
-      const unitPrice = product?.price || 0
-      totalValue += item.total * unitPrice
+      // Usa o mesmo valor calculado por linha (quantidade × preço), para que
+      // a soma das linhas da tabela bata com o total exibido no topo.
+      totalValue += item.stockValue || 0
       totalUnits += item.total
     })
     return { totalValue, totalUnits, productCount: summaryByProduct.length }
-  }, [summaryByProduct, products])
+  }, [summaryByProduct])
 
   // --- SHOPPING LIST TAB DATA ---
   const shoppingList = useMemo(() => {
@@ -1813,11 +1827,15 @@ export default function Reports() {
                     ? 'Alfabética'
                     : sortField === 'category'
                       ? 'Categoria'
-                      : 'Quantidade'}
+                      : sortField === 'value'
+                        ? 'Valor em estoque'
+                        : 'Quantidade'}
               </Badge>
               <Select
                 value={sortField}
-                onValueChange={(v: 'count' | 'name' | 'category' | 'quantity') => setSortField(v)}
+                onValueChange={(v: 'count' | 'name' | 'category' | 'quantity' | 'value') =>
+                  setSortField(v)
+                }
               >
                 <SelectTrigger className="w-[180px]">
                   <SelectValue />
@@ -1827,6 +1845,7 @@ export default function Reports() {
                   <SelectItem value="name">Alfabética</SelectItem>
                   <SelectItem value="category">Categoria</SelectItem>
                   <SelectItem value="quantity">Quantidade</SelectItem>
+                  <SelectItem value="value">Valor em estoque</SelectItem>
                 </SelectContent>
               </Select>
               <Button
@@ -1835,7 +1854,7 @@ export default function Reports() {
                 onClick={() => setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
                 className={cn(
                   'gap-1.5 transition-opacity',
-                  sortField !== 'quantity' && 'opacity-60',
+                  sortField !== 'quantity' && sortField !== 'value' && 'opacity-60',
                 )}
               >
                 {sortDirection === 'asc' ? (
@@ -1917,6 +1936,7 @@ export default function Reports() {
                     <TableHead>Produto</TableHead>
                     <TableHead>Categoria</TableHead>
                     <TableHead className="text-right">Quantidade Total</TableHead>
+                    <TableHead className="text-right">Valor em Estoque</TableHead>
                     {/* SITUAÇÃO 2: Com área + subárea selecionadas, exibir quem fez a contagem com dia e horário */}
                     {isSpecificAreaAndSubarea ? (
                       <TableHead>Última Contagem nesta Subárea (Quem / Dia / Hora)</TableHead>
@@ -1973,6 +1993,15 @@ export default function Reports() {
                         <TableCell className="text-right font-bold text-emerald-700">
                           {item.total}
                         </TableCell>
+                        <TableCell className="text-right font-semibold text-emerald-900 whitespace-nowrap">
+                          {item.price ? (
+                            formatCurrency(item.stockValue)
+                          ) : (
+                            <span className="text-zinc-400" title="Produto sem preço cadastrado">
+                              —
+                            </span>
+                          )}
+                        </TableCell>
 
                         {/* SITUAÇÃO 2: Formatação exigida "Contado por Fabia em 12/06/2025 às 14:32" */}
                         {isSpecificAreaAndSubarea ? (
@@ -2009,7 +2038,7 @@ export default function Reports() {
                   {summaryByProduct.length === 0 && (
                     <TableRow>
                       <TableCell
-                        colSpan={isSpecificAreaAndSubarea ? 4 : 5}
+                        colSpan={isSpecificAreaAndSubarea ? 5 : 6}
                         className="h-24 text-center text-zinc-500"
                       >
                         Nenhum produto encontrado.
