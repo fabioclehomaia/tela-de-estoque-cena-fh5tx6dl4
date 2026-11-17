@@ -1,15 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { format, parseISO } from 'date-fns'
-import {
-  Loader2,
-  Calendar as CalendarIcon,
-  PackageSearch,
-  CheckCircle2,
-  AlertTriangle,
-  SlidersHorizontal,
-  History,
-} from 'lucide-react'
-import pb from '@/lib/pocketbase/client'
+import { format } from 'date-fns'
+import { Loader2, PackageSearch, AlertTriangle, SlidersHorizontal, History } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'

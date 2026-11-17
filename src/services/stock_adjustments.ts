@@ -14,8 +14,8 @@ export interface StockAdjustment {
   created: string
   updated: string
   expand?: {
-    product?: { id: string; name: string; unit: string }
-    count?: { id: string; created: string }
+    product?: { id: string; name: string; unit: string; active?: boolean }
+    count?: { id: string; created: string; subarea_id: string }
     adjusted_by?: { id: string; name: string; email: string }
   }
 }

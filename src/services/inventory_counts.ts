@@ -19,6 +19,7 @@ export interface InventoryCount {
       category_id: string
       image?: string
       price?: number
+      active?: boolean
     }
     subarea_id: {
       id: string

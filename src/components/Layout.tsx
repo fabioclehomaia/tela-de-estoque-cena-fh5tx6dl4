@@ -120,7 +120,6 @@ export default function Layout() {
                       </SheetTrigger>
                     )
                   })}
->>>>>>>
                 </nav>
 
                 <div className="pt-4 border-t border-zinc-100">

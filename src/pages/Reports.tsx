@@ -36,6 +36,7 @@ import {
   Clock,
   ShieldAlert,
   Package,
+  SlidersHorizontal,
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -83,6 +84,7 @@ import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 import { CmvReport } from '@/components/reports/CmvReport'
 import { FinancialDashboard } from '@/components/reports/FinancialDashboard'
+import AdjustmentsReport from '@/components/reports/AdjustmentsReport'
 import { InactiveProductMark } from '@/components/shared/InactiveProductMark'
 
 const safeDate = (dateStr: string) => parseISO(dateStr.replace(' ', 'T'))
@@ -1145,7 +1147,7 @@ export default function Reports() {
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <div className="w-full overflow-x-auto pb-1 mb-6 -mx-4 px-4 sm:mx-0 sm:px-0">
-          <TabsList className="flex w-max min-w-full md:grid md:grid-cols-7 h-auto p-1 gap-1">
+          <TabsList className="flex w-max min-w-full md:grid md:grid-cols-8 h-auto p-1 gap-1">
             <TabsTrigger
               value="history"
               className="flex items-center justify-center gap-2 py-2 px-3 text-xs sm:text-sm whitespace-nowrap"
@@ -1195,13 +1197,23 @@ export default function Reports() {
               <BarChart3 className="hidden md:inline-block w-4 h-4 shrink-0" />
               <span>Análise Financeira</span>
             </TabsTrigger>
+            <TabsTrigger
+              value="adjustments"
+              className="flex items-center justify-center gap-2 py-2 px-3 text-xs sm:text-sm whitespace-nowrap"
+            >
+              <SlidersHorizontal className="hidden md:inline-block w-4 h-4 shrink-0" />
+              <span>Ajustes</span>
+            </TabsTrigger>
           </TabsList>
         </div>
 
         <Card className="shadow-sm border-zinc-200 mb-6 bg-white">
           <CardContent className="p-4 space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 items-end">
-              {(activeTab === 'history' || activeTab === 'trends' || activeTab === 'prices') && (
+              {(activeTab === 'history' ||
+                activeTab === 'trends' ||
+                activeTab === 'prices' ||
+                activeTab === 'adjustments') && (
                 <div className="space-y-1.5 lg:col-span-2">
                   <Label>Período</Label>
                   <div className="flex items-center gap-2">
@@ -2514,6 +2526,10 @@ export default function Reports() {
             selectedCategoryIds={selectedCategoryIds}
             onPeriodChange={handleCountsPeriodChange}
           />
+        </TabsContent>
+
+        <TabsContent value="adjustments">
+          <AdjustmentsReport startDate={startDate} endDate={endDate} />
         </TabsContent>
       </Tabs>
 
