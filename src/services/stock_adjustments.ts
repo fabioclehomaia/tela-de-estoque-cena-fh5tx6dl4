@@ -51,11 +51,18 @@ export const getStockAdjustments = async (filter: string = '') => {
 }
 
 export const createStockAdjustment = async (data: CreateStockAdjustmentInput) => {
-  const user = pb.authStore.record
+  const userId = pb.authStore.record?.id
+  if (!userId) {
+    throw new Error('Sessão expirada. Faça login novamente para registrar o ajuste.')
+  }
   return pb.collection('stock_adjustments').create<StockAdjustment>({
-    ...data,
+    product: data.product,
+    count: data.count,
+    adjustment_date: data.adjustment_date,
+    original_quantity: data.original_quantity,
+    corrected_quantity: data.corrected_quantity,
     reason: data.reason || '',
-    adjusted_by: user?.id,
+    adjusted_by: userId,
   })
 }
 

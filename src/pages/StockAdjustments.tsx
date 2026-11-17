@@ -42,6 +42,7 @@ import {
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
 import { AdjustmentsConfirmDialog } from '@/components/stock-adjustments/AdjustmentsConfirmDialog'
+import { describeStockAdjustmentError } from '@/services/stock_adjustments_errors'
 
 const formatDateTime = (s: string) => {
   try {
@@ -263,11 +264,12 @@ export default function StockAdjustments() {
           created.length === 1 ? 'retificação gravada' : 'retificações gravadas'
         } em ${format(new Date(today), 'dd/MM/yyyy')}. O histórico original permanece intacto.`,
       })
-    } catch (error: any) {
+    } catch (error: unknown) {
+      console.error('Falha ao gravar ajuste de estoque:', error)
       toast({
         title: 'Erro',
         description:
-          error?.response?.data?.message ||
+          describeStockAdjustmentError(error) ||
           'Não foi possível registrar o ajuste. Verifique seu perfil de acesso.',
         variant: 'destructive',
       })
