@@ -45,10 +45,11 @@ const App = () => (
                 <Route path="/suppliers" element={<Suppliers />} />
                 <Route path="/purchases" element={<Purchases />} />
                 <Route path="/faturamento" element={<Faturamento />} />
-                <Route path="/stock-adjustments" element={<StockAdjustments />} />
 
                 <Route path="/reports" element={<Reports />} />
               </Route>
+
+              <Route path="/stock-adjustments" element={<StockAdjustments />} />
             </Route>
           </Route>
 

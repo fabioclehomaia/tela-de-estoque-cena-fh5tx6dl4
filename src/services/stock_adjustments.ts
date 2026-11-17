@@ -1,3 +1,4 @@
+/// <reference lib="dom" />
 import { format, parseISO } from 'date-fns'
 import pb from '@/lib/pocketbase/client'
 

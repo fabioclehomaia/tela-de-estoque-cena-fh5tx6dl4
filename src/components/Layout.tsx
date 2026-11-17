@@ -57,7 +57,7 @@ export default function Layout() {
       path: '/stock-adjustments',
       label: 'Ajuste de Estoque',
       icon: SlidersHorizontal,
-      roles: ['admin', 'manager'],
+      roles: ['admin', 'manager', 'employee'],
     },
     { path: '/reports', label: 'Relatórios', icon: FileText, roles: ['admin', 'manager'] },
     { path: '/users', label: 'Usuários', icon: Users, roles: ['admin'] },
@@ -120,6 +120,7 @@ export default function Layout() {
                       </SheetTrigger>
                     )
                   })}
+>>>>>>>
                 </nav>
 
                 <div className="pt-4 border-t border-zinc-100">
