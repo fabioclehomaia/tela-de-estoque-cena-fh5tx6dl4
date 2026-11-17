@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import { format } from 'date-fns'
-import { Loader2, PackageSearch, AlertTriangle, SlidersHorizontal, History } from 'lucide-react'
+import {
+  Loader2,
+  PackageSearch,
+  AlertTriangle,
+  SlidersHorizontal,
+  History,
+  Search,
+  X,
+} from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -55,6 +63,18 @@ type Motive = (typeof MOTIVES)[number]
 
 const fullDate = (s: string) => new Date(s.replace(' ', 'T'))
 
+const latestByProduct = (rows: InventoryCount[]) => {
+  const latest = new Map<string, InventoryCount>()
+  for (const c of rows) {
+    const pid = c.product_id
+    const existing = latest.get(pid)
+    if (!existing || fullDate(c.created) > fullDate(existing.created)) {
+      latest.set(pid, c)
+    }
+  }
+  return Array.from(latest.values())
+}
+
 export default function StockAdjustments() {
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
@@ -72,6 +92,11 @@ export default function StockAdjustments() {
   // Contagens da subárea selecionada
   const [counts, setCounts] = useState<InventoryCount[]>([])
   const [countsLoading, setCountsLoading] = useState(false)
+
+  // Busca de produto específico (a ajustar)
+  const [search, setSearch] = useState('')
+  const [globalResults, setGlobalResults] = useState<InventoryCount[]>([])
+  const [globalLoading, setGlobalLoading] = useState(false)
 
   // Valores ajustados: productId -> novo valor (string para o input)
   const [edits, setEdits] = useState<Record<string, string>>({})
@@ -119,15 +144,7 @@ export default function StockAdjustments() {
     getInventoryCountsRange(fromIso, undefined, `subarea_id = "${subareaId}"`)
       .then((rows) => {
         if (cancelled) return
-        const latestByProduct = new Map<string, InventoryCount>()
-        for (const c of rows) {
-          const pid = c.product_id
-          const existing = latestByProduct.get(pid)
-          if (!existing || fullDate(c.created) > fullDate(existing.created)) {
-            latestByProduct.set(pid, c)
-          }
-        }
-        setCounts(Array.from(latestByProduct.values()))
+        setCounts(latestByProduct(rows))
       })
       .catch(() => {
         if (!cancelled)
@@ -145,12 +162,59 @@ export default function StockAdjustments() {
     }
   }, [subareaId, toast])
 
+  // Busca global de produto (sem subárea selecionada): última contagem do
+  // produto nos últimos 60 dias, em qualquer área. Debounce de 350ms.
+  useEffect(() => {
+    const term = search.trim()
+    if (subareaId || term.length < 2) {
+      setGlobalResults([])
+      return
+    }
+    let cancelled = false
+    setGlobalLoading(true)
+    const timer = setTimeout(() => {
+      const from = new Date()
+      from.setDate(from.getDate() - 60)
+      const fromIso = from.toISOString().slice(0, 10)
+      getInventoryCountsRange(fromIso, undefined, `product_id.name ~ "${term}"`)
+        .then((rows) => {
+          if (!cancelled) setGlobalResults(latestByProduct(rows))
+        })
+        .catch(() => {
+          if (!cancelled) setGlobalResults([])
+        })
+        .finally(() => {
+          if (!cancelled) setGlobalLoading(false)
+        })
+    }, 350)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [search, subareaId])
+
   const adjustedByCountId = useMemo(() => buildAdjustmentsByCountId(adjustments), [adjustments])
 
   const selectedArea = areas.find((a) => a.id === areaId) || null
   const selectedSubarea = subareas.find((s) => s.id === subareaId) || null
 
-  // Itens retificados (para a tela de confirmação e para gravar)
+  // Itens disponíveis na tabela: da subárea selecionada, ou (sem subárea) os
+  // produtos encontrados pela busca global.
+  const baseItems = useMemo(() => {
+    if (subareaId) return counts
+    return globalResults
+  }, [subareaId, counts, globalResults])
+
+  // Filtro em tempo real pelo termo de busca sobre o que está carregado
+  // (quando há subárea selecionada, filtra dentro dela).
+  const visibleItems = useMemo(() => {
+    const term = search.trim().toLowerCase()
+    if (!term) return baseItems
+    return baseItems.filter((c) => (c.expand?.product_id?.name || '').toLowerCase().includes(term))
+  }, [baseItems, search])
+
+  // Itens retificados (para a tela de confirmação e para gravar) — considera
+  // SEMPRE todos os itens carregados da subárea, mesmo os ocultos pela busca.
   const pendingItems = useMemo(() => {
     return counts
       .map((c) => {
@@ -285,10 +349,44 @@ export default function StockAdjustments() {
             </div>
           </div>
 
-          {!areaId && (
+          {/* Busca de produto específico */}
+          <div className="space-y-1.5">
+            <Label className="text-xs font-semibold text-zinc-600">Buscar produto específico</Label>
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
+              <Input
+                type="text"
+                className="pl-9 pr-9"
+                placeholder={
+                  subareaId
+                    ? 'Filtrar produto dentro da subárea selecionada...'
+                    : 'Digite o nome do produto (mín. 2 letras) para buscá-lo em qualquer subárea...'
+                }
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => setSearch('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 rounded-sm text-zinc-400 hover:text-zinc-600 hover:bg-zinc-200 transition-colors"
+                  title="Limpar busca"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+            <p className="text-xs text-zinc-500">
+              {subareaId
+                ? 'A busca filtra a lista de produtos da subárea selecionada.'
+                : 'Sem subárea selecionada, a busca localiza o produto em qualquer subárea com contagem dos últimos 60 dias.'}
+            </p>
+          </div>
+
+          {!areaId && search.trim().length < 2 && (
             <p className="text-sm text-zinc-500 flex items-center gap-2 py-2">
               <SlidersHorizontal className="w-4 h-4 text-zinc-400" />
-              Selecione a área e a subárea para carregar o estoque contado anteriormente.
+              Selecione a área e a subárea — ou busque um produto pelo nome acima.
             </p>
           )}
 
@@ -299,24 +397,40 @@ export default function StockAdjustments() {
             </div>
           )}
 
-          {/* 2. Lista de produtos/contagens da subárea */}
-          {selectedSubarea && (
+          {/* 2. Lista de produtos/contagens da subárea (ou resultado da busca global) */}
+          {(subareaId || globalResults.length > 0 || globalLoading) && (
             <div className="rounded-lg border border-zinc-200 overflow-hidden">
               <div className="bg-zinc-50 px-4 py-3 border-b border-zinc-200 flex items-center justify-between gap-2 flex-wrap">
                 <p className="text-sm font-semibold text-zinc-700">
-                  {selectedArea?.name} • {selectedSubarea.name}
+                  {subareaId
+                    ? `${selectedArea?.name} • ${selectedSubarea?.name}`
+                    : 'Resultado da busca'}
                   <span className="ml-2 text-xs font-normal text-zinc-500">
-                    estoque contado anteriormente
+                    {subareaId
+                      ? 'estoque contado anteriormente'
+                      : 'última contagem nos últimos 60 dias'}
                   </span>
                 </p>
-                {countsLoading && <Loader2 className="w-4 h-4 animate-spin text-emerald-700" />}
+                <div className="flex items-center gap-2">
+                  {countsLoading && <Loader2 className="w-4 h-4 animate-spin text-emerald-700" />}
+                  {globalLoading && <Loader2 className="w-4 h-4 animate-spin text-zinc-400" />}
+                  {visibleItems.length !== baseItems.length && (
+                    <Badge variant="outline" className="text-[10px] font-normal">
+                      {visibleItems.length} de {baseItems.length} produtos
+                    </Badge>
+                  )}
+                </div>
               </div>
-              {!countsLoading && counts.length === 0 && (
+              {!countsLoading && visibleItems.length === 0 && (
                 <p className="text-sm text-zinc-500 p-4">
-                  Nenhuma contagem registrada nesta subárea nos últimos 60 dias.
+                  {subareaId
+                    ? search.trim()
+                      ? `Nenhum produto da subárea corresponde a "${search.trim()}".`
+                      : 'Nenhuma contagem registrada nesta subárea nos últimos 60 dias.'
+                    : 'Nenhum produto encontrado. Digite pelo menos 2 letras do nome.'}
                 </p>
               )}
-              {counts.length > 0 && (
+              {visibleItems.length > 0 && (
                 <Table>
                   <TableHeader className="bg-white">
                     <TableRow>
@@ -328,7 +442,7 @@ export default function StockAdjustments() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {counts.map((c) => {
+                    {visibleItems.map((c) => {
                       const product = c.expand?.product_id
                       const alreadyAdjusted = adjustedByCountId.has(c.id)
                       return (
@@ -336,6 +450,15 @@ export default function StockAdjustments() {
                           <TableCell className="font-medium text-zinc-900">
                             <div className="flex items-center gap-2 flex-wrap">
                               {product?.name || 'Produto removido'}
+                              {!subareaId && c.expand?.subarea_id?.expand?.area_id && (
+                                <Badge
+                                  variant="outline"
+                                  className="text-[10px] font-normal text-zinc-500"
+                                >
+                                  {c.expand.subarea_id.expand.area_id.name} •{' '}
+                                  {c.expand.subarea_id.name}
+                                </Badge>
+                              )}
                               <span className="text-xs text-zinc-500">({product?.unit})</span>
                               {!product?.active && (
                                 <Badge variant="secondary" className="text-[10px]">
@@ -384,7 +507,7 @@ export default function StockAdjustments() {
           )}
 
           {/* 3. Motivo obrigatório */}
-          {counts.length > 0 && (
+          {(subareaId ? counts.length > 0 : changedItems.length > 0) && (
             <div className="space-y-3">
               <Label className="text-xs font-semibold text-zinc-600">
                 Motivo do ajuste <span className="text-red-600">*</span>
