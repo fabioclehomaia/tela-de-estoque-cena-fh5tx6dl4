@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
+import { isProcessedProduct } from '@/lib/processed-products'
 
 interface ProductSearchComboboxProps {
   products: Product[]
@@ -15,6 +16,11 @@ interface ProductSearchComboboxProps {
   disabled?: boolean
   /** Se true, esconde produtos com active === false da listagem de opções */
   onlyActive?: boolean
+  /**
+   * Se true (padrão), esconde também os produtos da categoria PROCESSADOS —
+   * itens produzidos na cozinha não são lançados como compra.
+   */
+  hideProcessed?: boolean
   className?: string
   /** Texto mostrado caso o produto selecionado esteja inativo (ex: em edição de compra antiga) */
   selectedProduct?: Product
@@ -27,6 +33,7 @@ export function ProductSearchCombobox({
   placeholder = 'Buscar produto por nome...',
   disabled = false,
   onlyActive = true,
+  hideProcessed = true,
   className,
   selectedProduct: explicitSelected,
 }: ProductSearchComboboxProps) {
@@ -38,14 +45,18 @@ export function ProductSearchCombobox({
     return products.find((p) => p.id === value)
   }, [products, value, explicitSelected])
 
-  // Lista de produtos visíveis
+  // Lista de produtos visíveis: inativos e processados ficam fora das opções
+  // (o produto já selecionado permanece visível para edição de compra antiga)
   const availableProducts = useMemo(() => {
     let list = products
     if (onlyActive) {
       list = list.filter((p) => p.active !== false || p.id === value)
     }
+    if (hideProcessed) {
+      list = list.filter((p) => !isProcessedProduct(p) || p.id === value)
+    }
     return list
-  }, [products, onlyActive, value])
+  }, [products, onlyActive, hideProcessed, value])
 
   // Filtro por termo de busca
   const filteredProducts = useMemo(() => {

@@ -46,6 +46,7 @@ import { useInventoryCounts } from '@/hooks/use-inventory-counts'
 import { PeriodSelector, PeriodRange } from '@/components/shared/PeriodSelector'
 import { InactiveProductMark } from '@/components/shared/InactiveProductMark'
 import { calculateProductConsumption } from '@/lib/cmv-utils'
+import { isProcessedProduct } from '@/lib/processed-products'
 
 const formatCurrency = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v)
@@ -140,7 +141,11 @@ export function FinancialDashboard({
 
     return COST_CATEGORIES.filter((cat) => selectedCategories.includes(cat))
       .map((cat) => {
-        let catProducts = products.filter((p) => (p.cost_category || 'CMV') === cat)
+        // Produtos PROCESSADOS (produzidos na cozinha) ficam fora dos
+        // totais de compras e consumo — o custo entra pela matéria-prima.
+        let catProducts = products.filter(
+          (p) => (p.cost_category || 'CMV') === cat && !isProcessedProduct(p),
+        )
         if (selectedCategoryIds.length > 0) {
           catProducts = catProducts.filter((p) => {
             const matchStandard = p.category_id

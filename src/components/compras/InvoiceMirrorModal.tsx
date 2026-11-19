@@ -40,6 +40,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
+import { isProcessedProduct } from '@/lib/processed-products'
 
 const COST_CATEGORIES: CostCategory[] = [
   'CMV',
@@ -223,9 +224,11 @@ export function InvoiceMirrorModal({
             return pName === lowerDesc || lowerDesc.includes(pName) || pName.includes(lowerDesc)
           })
           if (matched) {
-            // Se o produto encontrado estiver inativo, não auto-vincula silenciosamente:
-            // sinaliza para revisão do usuário
-            if (matched.active === false) {
+            // Produtos PROCESSADOS (produzidos na cozinha) e inativos não são
+            // auto-vinculados silenciosamente: ficam sinalizados para revisão.
+            if (isProcessedProduct(matched)) {
+              inactiveMatchWarning = `Produto sugerido "${matched.name}" é da categoria PROCESSADOS e não pode ser lançado como compra. Marque como avulso ou selecione outro produto.`
+            } else if (matched.active === false) {
               inactiveMatchWarning = `Produto sugerido "${matched.name}" está inativo. Selecione outro produto ativo ou marque como avulso.`
             } else {
               matchedProductId = matched.id
@@ -669,7 +672,9 @@ export function InvoiceMirrorModal({
                               className="bg-rose-100 text-rose-800 border-rose-300 text-[10px] py-0 px-1.5 flex items-center gap-1"
                             >
                               <AlertTriangle className="w-3 h-3 text-rose-700" />
-                              Sugeriu produto inativo (requer seleção)
+                              {it.inactive_match_warning?.includes('PROCESSADOS')
+                                ? 'Produto processado (não é compra)'
+                                : 'Sugeriu produto inativo (requer seleção)'}
                             </Badge>
                           )}
                           <label className="flex items-center gap-1.5 cursor-pointer text-xs font-medium text-zinc-700">
@@ -720,7 +725,9 @@ export function InvoiceMirrorModal({
                               </Label>
                               {it.inactive_match_warning && !it.product_id && (
                                 <span className="text-[10px] text-rose-600 font-medium truncate max-w-[220px]">
-                                  Sugerido inativo
+                                  {it.inactive_match_warning.includes('PROCESSADOS')
+                                    ? 'Processado — requer seleção'
+                                    : 'Sugerido inativo'}
                                 </span>
                               )}
                             </div>

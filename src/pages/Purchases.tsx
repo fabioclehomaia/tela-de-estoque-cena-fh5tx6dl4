@@ -14,6 +14,7 @@ import { InactiveProductMark } from '@/components/shared/InactiveProductMark'
 import { CompraAvulsaModal } from '@/components/compras/CompraAvulsaModal'
 import { InvoiceMirrorModal } from '@/components/compras/InvoiceMirrorModal'
 import { ProductSearchCombobox } from '@/components/compras/ProductSearchCombobox'
+import { isProcessedCompra } from '@/lib/processed-products'
 import { PurchasesFilterBar } from '@/components/compras/PurchasesFilterBar'
 import { PriceVariationAlert } from '@/components/compras/PriceVariationAlert'
 import { checkPriceVariation } from '@/lib/price-variation'
@@ -140,9 +141,14 @@ export default function Purchases() {
     return filterCompras(compras, filters, productsMap, suppliersMap)
   }, [compras, filters, productsMap, suppliersMap])
 
+  // Total financeiro exibido: compras de produtos PROCESSADOS (produzidos na
+  // cozinha) não são contabilizadas — a listagem histórica continua visível.
   const totalAmountFiltered = useMemo(() => {
-    return filteredCompras.reduce((sum, c) => sum + (c.quantity || 1) * (c.price || 0), 0)
-  }, [filteredCompras])
+    return filteredCompras.reduce((sum, c) => {
+      if (isProcessedCompra(c, productsMap)) return sum
+      return sum + (c.quantity || 1) * (c.price || 0)
+    }, 0)
+  }, [filteredCompras, productsMap])
 
   const activeFiltersCount = countActiveFilters(filters)
 

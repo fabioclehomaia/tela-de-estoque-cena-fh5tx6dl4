@@ -2,6 +2,7 @@ import { InventoryLevel } from '@/services/inventory_levels'
 import { InventoryCount } from '@/services/inventory_counts'
 import { Compra } from '@/services/compras'
 import { Product } from '@/services/products'
+import { isProcessedProduct } from '@/lib/processed-products'
 
 export function getStockAtDate(
   productId: string,
@@ -71,6 +72,8 @@ export function calculateProductConsumption(
 ): ProductConsumptionDetail {
   const matchingCompras = compras.filter((c) => {
     if (c.product_id !== product.id) return false
+    // Compras de produtos PROCESSADOS não contabilizam como compra/consumo
+    if (isProcessedProduct(product)) return false
     const d = new Date(c.date.split(' ')[0])
     return d >= startDate && d <= endDate
   })
@@ -141,7 +144,11 @@ export function calculateCMV(
   startDate: Date,
   endDate: Date,
 ): CMVResult {
-  const cmvProducts = products.filter((p) => !p.cost_category || p.cost_category === 'CMV')
+  // Produtos PROCESSADOS (produzidos na cozinha) entram no CMV pela matéria-
+  // prima: excluídos do breakdown e, portanto, de todos os totais.
+  const cmvProducts = products.filter(
+    (p) => (!p.cost_category || p.cost_category === 'CMV') && !isProcessedProduct(p),
+  )
 
   const breakdown = cmvProducts.map((product) => {
     const unitPrice = product.price || 0

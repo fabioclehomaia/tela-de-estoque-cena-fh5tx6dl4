@@ -85,6 +85,7 @@ import { cn } from '@/lib/utils'
 import { CmvReport } from '@/components/reports/CmvReport'
 import { FinancialDashboard } from '@/components/reports/FinancialDashboard'
 import AdjustmentsReport from '@/components/reports/AdjustmentsReport'
+import PriceStalenessReport from '@/components/reports/PriceStalenessReport'
 import { InactiveProductMark } from '@/components/shared/InactiveProductMark'
 
 const safeDate = (dateStr: string) => parseISO(dateStr.replace(' ', 'T'))
@@ -212,7 +213,8 @@ export default function Reports() {
   // demanda, com cache (priceHistoryLoaded evita rebuscar ao voltar para a aba).
   useEffect(() => {
     if (priceHistoryLoaded || priceHistoryLoading) return
-    const needsPriceHistory = activeTab === 'prices' || activeTab === 'trends'
+    const needsPriceHistory =
+      activeTab === 'prices' || activeTab === 'trends' || activeTab === 'price-staleness'
     if (!needsPriceHistory) return
     setPriceHistoryLoading(true)
     getProductPriceHistory()
@@ -1147,7 +1149,7 @@ export default function Reports() {
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <div className="w-full overflow-x-auto pb-1 mb-6 -mx-4 px-4 sm:mx-0 sm:px-0">
-          <TabsList className="flex w-max min-w-full md:grid md:grid-cols-8 h-auto p-1 gap-1">
+          <TabsList className="flex w-max min-w-full md:grid md:grid-cols-9 h-auto p-1 gap-1">
             <TabsTrigger
               value="history"
               className="flex items-center justify-center gap-2 py-2 px-3 text-xs sm:text-sm whitespace-nowrap"
@@ -1203,6 +1205,13 @@ export default function Reports() {
             >
               <SlidersHorizontal className="hidden md:inline-block w-4 h-4 shrink-0" />
               <span>Ajustes</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="price-staleness"
+              className="flex items-center justify-center gap-2 py-2 px-3 text-xs sm:text-sm whitespace-nowrap"
+            >
+              <Clock className="hidden md:inline-block w-4 h-4 shrink-0" />
+              <span>Dias sem Ajuste</span>
             </TabsTrigger>
           </TabsList>
         </div>
@@ -2530,6 +2539,16 @@ export default function Reports() {
 
         <TabsContent value="adjustments">
           <AdjustmentsReport startDate={startDate} endDate={endDate} />
+        </TabsContent>
+
+        <TabsContent value="price-staleness">
+          <PriceStalenessReport
+            products={products}
+            priceHistory={priceHistory}
+            priceHistoryLoading={priceHistoryLoading}
+            categories={categories}
+            selectedCategoryIds={selectedCategoryIds}
+          />
         </TabsContent>
       </Tabs>
 
