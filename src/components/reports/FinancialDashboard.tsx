@@ -46,6 +46,7 @@ import { useInventoryCounts } from '@/hooks/use-inventory-counts'
 import { PeriodSelector, PeriodRange } from '@/components/shared/PeriodSelector'
 import { InactiveProductMark } from '@/components/shared/InactiveProductMark'
 import { calculateProductConsumption } from '@/lib/cmv-utils'
+import { useStockAdjustments } from '@/hooks/use-stock-adjustments'
 import { isProcessedProduct } from '@/lib/processed-products'
 
 const formatCurrency = (v: number) =>
@@ -115,6 +116,9 @@ export function FinancialDashboard({
   const [levels, setLevels] = useState<InventoryLevel[]>([])
   // Contagens: apenas os últimos 60 dias do servidor + realtime incremental.
   const { counts } = useInventoryCounts()
+  // Ajustes de estoque entram no consumo real pela data da contagem retificada
+  // (CMV retroativo), no modo "Consumo Real".
+  const { adjustments } = useStockAdjustments()
 
   useEffect(() => {
     const load = async () => {
@@ -230,7 +234,15 @@ export function FinancialDashboard({
           // MODO 2: Consumo Real (Estoque inicial + Compras - Estoque final)
           const productBreakdown = catProducts
             .map((p) => {
-              const detail = calculateProductConsumption(p, compras, levels, counts, sStart, sEnd)
+              const detail = calculateProductConsumption(
+                p,
+                compras,
+                levels,
+                counts,
+                sStart,
+                sEnd,
+                adjustments,
+              )
               return {
                 product: p,
                 total: detail.consumoValor,
@@ -256,6 +268,7 @@ export function FinancialDashboard({
     compras,
     levels,
     counts,
+    adjustments,
     period,
     selectedCategories,
     selectedCategoryIds,

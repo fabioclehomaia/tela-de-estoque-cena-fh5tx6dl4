@@ -12,6 +12,10 @@ export interface InventoryCount {
   created: string
   updated: string
   expand?: {
+    /**
+     * subarea_id pode vir sem expand quando a subárea foi excluída — o
+     * código de relatório lê expand?.subarea_id?.name de forma tolerante.
+     */
     product_id: {
       id: string
       name: string

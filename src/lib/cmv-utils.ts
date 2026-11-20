@@ -3,27 +3,10 @@ import { InventoryCount } from '@/services/inventory_counts'
 import { Compra } from '@/services/compras'
 import { Product } from '@/services/products'
 import { isProcessedProduct } from '@/lib/processed-products'
+import { StockAdjustment } from '@/services/stock_adjustments'
+import { getStockAtDate } from '@/lib/stock-time-machine'
 
-export function getStockAtDate(
-  productId: string,
-  date: Date,
-  levels: InventoryLevel[],
-  counts: InventoryCount[],
-): number {
-  const currentStock = levels
-    .filter((l) => l.product_id === productId)
-    .reduce((sum, l) => sum + (l.quantity || 0), 0)
-
-  const adjustments = counts
-    .filter((c) => {
-      if (c.product_id !== productId) return false
-      const countDate = new Date(c.created.replace(' ', 'T'))
-      return countDate > date
-    })
-    .reduce((sum, c) => sum - ((c.counted_quantity || 0) - (c.previous_quantity || 0)), 0)
-
-  return currentStock + adjustments
-}
+export { getStockAtDate }
 
 export interface CMVBreakdown {
   product: Product
@@ -62,6 +45,13 @@ export interface ProductConsumptionDetail {
   hasInventoryData: boolean // true se o produto tem contagens ou registro de nível de estoque
 }
 
+/**
+ * Parâmetro opcional `adjustments` (stock_adjustments): quando informado, o
+ * estoque reconstruído passa a incorporar os ajustes PELA DATA DA CONTAGEM
+ * retificada (adjustment_date), e não pela data de gravação do ajuste — é o
+ * que torna o CMV retroativo: contagem ajustada dentro do período altera o
+ * estoque inicial/final daquele período, mesmo com ajuste gravado depois.
+ */
 export function calculateProductConsumption(
   product: Product,
   compras: Compra[],
@@ -69,6 +59,7 @@ export function calculateProductConsumption(
   counts: InventoryCount[],
   startDate: Date,
   endDate: Date,
+  adjustments: StockAdjustment[] = [],
 ): ProductConsumptionDetail {
   const matchingCompras = compras.filter((c) => {
     if (c.product_id !== product.id) return false
@@ -113,8 +104,8 @@ export function calculateProductConsumption(
     }
   }
 
-  const estoqueInicialQtd = getStockAtDate(product.id, startDate, levels, counts)
-  const estoqueFinalQtd = getStockAtDate(product.id, endDate, levels, counts)
+  const estoqueInicialQtd = getStockAtDate(product.id, startDate, levels, counts, adjustments)
+  const estoqueFinalQtd = getStockAtDate(product.id, endDate, levels, counts, adjustments)
 
   const estoqueInicial = estoqueInicialQtd * unitPrice
   const estoqueFinal = estoqueFinalQtd * unitPrice
@@ -143,6 +134,7 @@ export function calculateCMV(
   counts: InventoryCount[],
   startDate: Date,
   endDate: Date,
+  adjustments: StockAdjustment[] = [],
 ): CMVResult {
   // Produtos PROCESSADOS (produzidos na cozinha) entram no CMV pela matéria-
   // prima: excluídos do breakdown e, portanto, de todos os totais.
@@ -152,8 +144,8 @@ export function calculateCMV(
 
   const breakdown = cmvProducts.map((product) => {
     const unitPrice = product.price || 0
-    const estoqueInicialQtd = getStockAtDate(product.id, startDate, levels, counts)
-    const estoqueFinalQtd = getStockAtDate(product.id, endDate, levels, counts)
+    const estoqueInicialQtd = getStockAtDate(product.id, startDate, levels, counts, adjustments)
+    const estoqueFinalQtd = getStockAtDate(product.id, endDate, levels, counts, adjustments)
 
     const matchingCompras = compras.filter((c) => {
       if (c.product_id !== product.id) return false

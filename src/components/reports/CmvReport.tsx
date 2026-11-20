@@ -154,7 +154,9 @@ export function CmvReport({ selectedCategoryIds = [], onPeriodChange }: CmvRepor
     })
   }, [products, selectedCategoryIds])
 
-  // Cálculo de CMV para todos os produtos compatíveis no período
+  // Cálculo de CMV para todos os produtos compatíveis no período. Os ajustes
+  // de estoque entram pela DATA DA CONTAGEM retificada (CMV retroativo): um
+  // ajuste gravado hoje sobre uma contagem do período altera o resultado.
   const cmvResult = useMemo(() => {
     if (!startDate || !endDate) return null
     return calculateCMV(
@@ -164,15 +166,24 @@ export function CmvReport({ selectedCategoryIds = [], onPeriodChange }: CmvRepor
       counts,
       safeDate(startDate),
       safeDate(endDate),
+      adjustments,
     )
-  }, [categoryFilteredProducts, compras, levels, counts, startDate, endDate])
+  }, [categoryFilteredProducts, compras, levels, counts, startDate, endDate, adjustments])
 
   // CMV TOTAL do período, calculado sobre TODOS os produtos — independe dos
   // filtros de categoria/busca. É o contexto contra o qual medimos a seleção.
   const fullCmvResult = useMemo(() => {
     if (!startDate || !endDate) return null
-    return calculateCMV(products, compras, levels, counts, safeDate(startDate), safeDate(endDate))
-  }, [products, compras, levels, counts, startDate, endDate])
+    return calculateCMV(
+      products,
+      compras,
+      levels,
+      counts,
+      safeDate(startDate),
+      safeDate(endDate),
+      adjustments,
+    )
+  }, [products, compras, levels, counts, startDate, endDate, adjustments])
 
   const hasActiveFilter = selectedCategoryIds.length > 0 || productSearch.trim().length > 0
 

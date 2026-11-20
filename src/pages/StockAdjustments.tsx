@@ -33,6 +33,7 @@ import {
 } from '@/components/ui/select'
 import { getAreas, getSubareas, Area, Subarea } from '@/services/inventory'
 import { InventoryCount, getInventoryCountsRange } from '@/services/inventory_counts'
+import { groupCountsByProduct, formatCountDate } from '@/lib/count-history'
 import {
   StockAdjustment,
   getStockAdjustments,
@@ -62,18 +63,8 @@ const MOTIVES = [
 
 type Motive = (typeof MOTIVES)[number]
 
-const fullDate = (s: string) => new Date(s.replace(' ', 'T'))
-
 const latestByProduct = (rows: InventoryCount[]) => {
-  const latest = new Map<string, InventoryCount>()
-  for (const c of rows) {
-    const pid = c.product_id
-    const existing = latest.get(pid)
-    if (!existing || fullDate(c.created) > fullDate(existing.created)) {
-      latest.set(pid, c)
-    }
-  }
-  return Array.from(latest.values())
+  return groupCountsByProduct(rows).map((g) => g[0])
 }
 
 export default function StockAdjustments() {
@@ -98,6 +89,12 @@ export default function StockAdjustments() {
   const [search, setSearch] = useState('')
   const [globalResults, setGlobalResults] = useState<InventoryCount[]>([])
   const [globalLoading, setGlobalLoading] = useState(false)
+
+  // Contagens mantidas por produto (todas as dos últimos 60 dias) para que o
+  // usuário escolha QUAL contagem retificar quando houver mais de uma.
+  const [countsByProduct, setCountsByProduct] = useState<Map<string, InventoryCount[]>>(new Map())
+  // productId -> countId escolhido como base da retificação
+  const [selectedCount, setSelectedCount] = useState<Record<string, string>>({})
 
   // Valores ajustados: productId -> novo valor (string para o input)
   const [edits, setEdits] = useState<Record<string, string>>({})
@@ -145,6 +142,7 @@ export default function StockAdjustments() {
     getInventoryCountsRange(fromIso, undefined, `subarea_id = "${subareaId}"`)
       .then((rows) => {
         if (cancelled) return
+        setCountsByProduct(groupCountsByProduct(rows))
         setCounts(latestByProduct(rows))
       })
       .catch(() => {
@@ -180,6 +178,7 @@ export default function StockAdjustments() {
       getInventoryCountsRange(fromIso, undefined, `product_id.name ~ "${term}"`)
         .then((rows) => {
           if (!cancelled) setGlobalResults(latestByProduct(rows))
+          if (!cancelled) setCountsByProduct(groupCountsByProduct(rows))
         })
         .catch(() => {
           if (!cancelled) setGlobalResults([])
@@ -214,19 +213,44 @@ export default function StockAdjustments() {
     return baseItems.filter((c) => (c.expand?.product_id?.name || '').toLowerCase().includes(term))
   }, [baseItems, search])
 
+  // Contagem efetivamente usada como base de cada linha: a escolhida no seletor
+  // de data ou, na falta, a mais recente do produto.
+  const effectiveCountOf = (productId: string): InventoryCount | undefined => {
+    const list = countsByProduct.get(productId) || []
+    const chosenId = selectedCount[productId]
+    if (chosenId) {
+      const chosen = list.find((c) => c.id === chosenId)
+      if (chosen) return chosen
+    }
+    return list[0]
+  }
+
   // Itens retificados (para a tela de confirmação e para gravar) — considera
-  // SEMPRE todos os itens carregados da subárea, mesmo os ocultos pela busca.
+  // SEMPRE todas as contagens carregadas por produto, mesmo as ocultas pela
+  // busca. A chave de edição é `productId::countId`, então retificar contagens
+  // diferentes do mesmo produto gera linhas distintas.
   const pendingItems = useMemo(() => {
-    return counts
-      .map((c) => {
-        const raw = edits[c.product_id]
-        if (raw === undefined || raw.trim() === '') return null
-        const value = Number(raw)
-        if (Number.isNaN(value) || value < 0) return null
-        return { count: c, newValue: value }
-      })
-      .filter((x): x is { count: InventoryCount; newValue: number } => x !== null)
-  }, [counts, edits])
+    const items: { count: InventoryCount; newValue: number }[] = []
+    for (const [key, raw] of Object.entries(edits)) {
+      if (raw === undefined || raw.trim() === '') continue
+      const sep = key.lastIndexOf('::')
+      if (sep < 0) continue
+      const productId = key.slice(0, sep)
+      const countId = key.slice(sep + 2)
+      const count = countsByProduct.get(productId)?.find((c) => c.id === countId)
+      if (!count) continue
+      const value = Number(raw)
+      if (Number.isNaN(value) || value < 0) continue
+      items.push({ count, newValue: value })
+    }
+    // Ordena pela data da contagem (mais antiga primeiro) só para leitura
+    items.sort(
+      (a, b) =>
+        new Date(a.count.created.replace(' ', 'T')).getTime() -
+        new Date(b.count.created.replace(' ', 'T')).getTime(),
+    )
+    return items
+  }, [edits, countsByProduct])
 
   const changedItems = useMemo(
     () => pendingItems.filter((x) => x.newValue !== x.count.counted_quantity),
@@ -240,13 +264,15 @@ export default function StockAdjustments() {
     setSaving(true)
     try {
       const finalReason = motive === 'Outros' ? `Outros: ${otherText.trim()}` : motive
-      const today = format(new Date(), 'yyyy-MM-dd')
       const created: StockAdjustment[] = []
       for (const item of changedItems) {
+        // A data do ajuste é a da CONTAGEM retificada — é ela que ancora o
+        // CMV retroativo (o ajuste entra na apuração do período da contagem).
+        const countDay = item.count.created.split(' ')[0]
         const rec = await createStockAdjustment({
           product: item.count.product_id,
           count: item.count.id,
-          adjustment_date: `${today} 00:00:00`,
+          adjustment_date: `${countDay} 00:00:00`,
           original_quantity: item.count.counted_quantity,
           corrected_quantity: item.newValue,
           reason: finalReason,
@@ -262,7 +288,7 @@ export default function StockAdjustments() {
         title: 'Ajuste registrado',
         description: `${created.length} ${
           created.length === 1 ? 'retificação gravada' : 'retificações gravadas'
-        } em ${format(new Date(today), 'dd/MM/yyyy')}. O histórico original permanece intacto.`,
+        } em ${format(new Date(), 'dd/MM/yyyy')}. O histórico original permanece intacto.`,
       })
     } catch (error: unknown) {
       console.error('Falha ao gravar ajuste de estoque:', error)
@@ -437,8 +463,10 @@ export default function StockAdjustments() {
                   <TableHeader className="bg-white">
                     <TableRow>
                       <TableHead>Produto</TableHead>
-                      <TableHead className="text-right">Última contagem</TableHead>
-                      <TableHead className="text-right">Estoque ajustado</TableHead>
+                      <TableHead className="text-right">Estoque anterior</TableHead>
+                      <TableHead className="text-right">
+                        Contagem a retificar / novo valor
+                      </TableHead>
                       <TableHead>Contado por</TableHead>
                       <TableHead>Quando</TableHead>
                     </TableRow>
@@ -447,6 +475,12 @@ export default function StockAdjustments() {
                     {visibleItems.map((c) => {
                       const product = c.expand?.product_id
                       const alreadyAdjusted = adjustedByCountId.has(c.id)
+                      // Todas as contagens deste produto (mais recente primeiro):
+                      // base para escolher QUAL contagem será retificada.
+                      const countOptions = countsByProduct.get(c.product_id) || [c]
+                      // Contagem efetiva (a escolhida no seletor ou a mais recente):
+                      // é dela que sai o "estoque anterior" da retificação.
+                      const effective = effectiveCountOf(c.product_id) || c
                       return (
                         <TableRow key={c.id}>
                           <TableCell className="font-medium text-zinc-900">
@@ -478,26 +512,75 @@ export default function StockAdjustments() {
                             </div>
                           </TableCell>
                           <TableCell className="text-right text-zinc-700">
-                            {c.counted_quantity}
+                            {effective.counted_quantity}
                           </TableCell>
                           <TableCell className="text-right">
-                            <Input
-                              type="number"
-                              step="any"
-                              min="0"
-                              className="w-28 ml-auto text-right"
-                              placeholder={String(c.counted_quantity)}
-                              value={edits[c.product_id] ?? ''}
-                              onChange={(e) =>
-                                setEdits((prev) => ({ ...prev, [c.product_id]: e.target.value }))
-                              }
-                            />
+                            <div className="flex flex-col items-end gap-1.5">
+                              {countOptions.length > 1 && (
+                                <Select
+                                  value={
+                                    (selectedCount[c.product_id] || countOptions[0].id) ===
+                                    countOptions[0].id
+                                      ? 'latest'
+                                      : selectedCount[c.product_id]
+                                  }
+                                  onValueChange={(v) => {
+                                    const target = v === 'latest' ? countOptions[0].id : v
+                                    setSelectedCount((prev) => ({
+                                      ...prev,
+                                      [c.product_id]: target,
+                                    }))
+                                    // A contagem escolhida passa a ser a base da
+                                    // retificação deste produto: limpa as edições
+                                    // das outras contagens dele.
+                                    setEdits((prev) => {
+                                      const next: Record<string, string> = {}
+                                      for (const [k, val] of Object.entries(prev)) {
+                                        if (!k.startsWith(`${c.product_id}::`)) next[k] = val
+                                      }
+                                      return next
+                                    })
+                                  }}
+                                >
+                                  <SelectTrigger className="h-7 w-[170px] text-[11px]">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {countOptions.map((opt, idx) => (
+                                      <SelectItem
+                                        key={opt.id}
+                                        value={idx === 0 ? 'latest' : opt.id}
+                                      >
+                                        {idx === 0 ? 'Mais recente' : 'Contagem'} •{' '}
+                                        {formatCountDate(opt.created)}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              )}
+                              <Input
+                                type="number"
+                                step="any"
+                                min="0"
+                                className="w-28 text-right"
+                                placeholder={String(c.counted_quantity)}
+                                value={edits[`${c.product_id}::${c.id}`] ?? ''}
+                                onChange={(e) =>
+                                  setEdits((prev) => ({
+                                    ...prev,
+                                    [`${c.product_id}::${c.id}`]: e.target.value,
+                                  }))
+                                }
+                              />
+                            </div>
                           </TableCell>
                           <TableCell className="text-zinc-600 text-sm">
-                            {c.expand?.user_id?.name || c.expand?.user_id?.email || '—'}
+                            {effective.expand?.user_id?.name ||
+                              effective.expand?.user_id?.email ||
+                              '—'}
                           </TableCell>
                           <TableCell className="text-zinc-500 text-sm whitespace-nowrap">
-                            {formatDateTime(c.created)}
+                            {formatDateTime(effective.created)}
                           </TableCell>
                         </TableRow>
                       )
@@ -609,7 +692,7 @@ export default function StockAdjustments() {
                       <TableRow key={adj.id}>
                         <TableCell className="whitespace-nowrap">
                           {adj.adjustment_date
-                            ? format(fullDate(adj.adjustment_date), 'dd/MM/yyyy')
+                            ? format(new Date(adj.adjustment_date.replace(' ', 'T')), 'dd/MM/yyyy')
                             : '—'}
                         </TableCell>
                         <TableCell className="font-medium">
