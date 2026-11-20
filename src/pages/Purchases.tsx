@@ -3,7 +3,16 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { format } from 'date-fns'
-import { Plus, Edit, Trash2, ShoppingCart, Sparkles, ReceiptText, FilterX } from 'lucide-react'
+import {
+  Plus,
+  Edit,
+  Trash2,
+  ShoppingCart,
+  Sparkles,
+  ReceiptText,
+  FilterX,
+  Layers,
+} from 'lucide-react'
 import { getCompras, createCompra, updateCompra, deleteCompra, Compra } from '@/services/compras'
 import { getProducts, updateProduct, Product } from '@/services/products'
 import { getInventoryLevels } from '@/services/inventory_levels'
@@ -13,6 +22,7 @@ import { Badge } from '@/components/ui/badge'
 import { InactiveProductMark } from '@/components/shared/InactiveProductMark'
 import { CompraAvulsaModal } from '@/components/compras/CompraAvulsaModal'
 import { InvoiceMirrorModal } from '@/components/compras/InvoiceMirrorModal'
+import { BatchEntryModal, BatchSeed } from '@/components/compras/BatchEntryModal'
 import { ProductSearchCombobox } from '@/components/compras/ProductSearchCombobox'
 import { isProcessedCompra } from '@/lib/processed-products'
 import { PurchasesFilterBar } from '@/components/compras/PurchasesFilterBar'
@@ -84,6 +94,8 @@ export default function Purchases() {
   const [isOpen, setIsOpen] = useState(false)
   const [isAvulsaOpen, setIsAvulsaOpen] = useState(false)
   const [isAiMirrorOpen, setIsAiMirrorOpen] = useState(false)
+  const [isBatchOpen, setIsBatchOpen] = useState(false)
+  const [batchSeed, setBatchSeed] = useState<BatchSeed | null>(null)
   const [editingAvulsaCompra, setEditingAvulsaCompra] = useState<Compra | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [filters, setFilters] = useState<PurchasesFilterState>(initialPurchasesFilters)
@@ -272,6 +284,19 @@ export default function Purchases() {
           >
             <Sparkles className="w-4 h-4 text-emerald-600" />
             Ler nota
+          </Button>
+
+          {/* Botão Lançamento em Lote */}
+          <Button
+            variant="outline"
+            className="border-emerald-200 text-emerald-800 hover:bg-emerald-50 hover:text-emerald-900 gap-1.5"
+            onClick={() => {
+              setBatchSeed(null)
+              setIsBatchOpen(true)
+            }}
+          >
+            <Layers className="w-4 h-4 text-emerald-600" />
+            Compra em Lote
           </Button>
 
           {/* Botão Compra Avulsa */}
@@ -671,6 +696,25 @@ export default function Purchases() {
         products={products}
         suppliers={suppliers}
         priceHistory={priceHistory}
+        onSuccess={loadData}
+        onSendToBatch={(seed) => {
+          setIsAiMirrorOpen(false)
+          setBatchSeed(seed)
+          setIsBatchOpen(true)
+        }}
+      />
+
+      {/* Modal Lançamento em Lote */}
+      <BatchEntryModal
+        open={isBatchOpen}
+        onOpenChange={(open) => {
+          setIsBatchOpen(open)
+          if (!open) setBatchSeed(null)
+        }}
+        products={products}
+        suppliers={suppliers}
+        priceHistory={priceHistory}
+        seed={batchSeed}
         onSuccess={loadData}
       />
     </div>

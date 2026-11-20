@@ -20,6 +20,7 @@ import {
   Plus,
   Trash2,
   Sparkles,
+  Layers,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -74,6 +75,22 @@ interface InvoiceMirrorModalProps {
   suppliers: Fornecedor[]
   priceHistory?: ProductPriceHistory[]
   onSuccess: () => void
+  /** Envia os itens do espelho para o Lançamento em Lote, para revisão antes de salvar */
+  onSendToBatch?: (seed: {
+    supplier_id?: string
+    date?: string
+    nota_fiscal?: string
+    payment_term?: string
+    lines: {
+      key: string
+      is_avulso: boolean
+      product_id?: string
+      quantity: number
+      price: number
+      description?: string
+      cost_category?: CostCategory
+    }[]
+  }) => void
 }
 
 export function InvoiceMirrorModal({
@@ -83,6 +100,7 @@ export function InvoiceMirrorModal({
   suppliers,
   priceHistory,
   onSuccess,
+  onSendToBatch,
 }: InvoiceMirrorModalProps) {
   const [step, setStep] = useState<'upload' | 'mirror'>('upload')
   const [isProcessing, setIsProcessing] = useState(false)
@@ -880,6 +898,34 @@ export function InvoiceMirrorModal({
                 <Button variant="ghost" size="sm" onClick={handleClose} disabled={isSaving}>
                   Cancelar
                 </Button>
+                {onSendToBatch && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="border-emerald-200 text-emerald-800 hover:bg-emerald-50 hover:text-emerald-900 gap-1.5"
+                    onClick={() =>
+                      onSendToBatch({
+                        supplier_id: selectedSupplierId || undefined,
+                        date: dataNota || undefined,
+                        nota_fiscal: notaFiscal || undefined,
+                        payment_term: paymentTerm || undefined,
+                        lines: itens.map((it) => ({
+                          key: `mirror_${it.id}`,
+                          is_avulso: it.is_avulso,
+                          product_id: it.product_id,
+                          quantity: it.quantidade || 1,
+                          price: it.preco_unitario || 0,
+                          description: it.is_avulso ? it.descricao : undefined,
+                          cost_category: it.cost_category,
+                        })),
+                      })
+                    }
+                    disabled={itens.length === 0}
+                  >
+                    <Layers className="w-4 h-4 text-emerald-600" />
+                    Enviar para lote
+                  </Button>
+                )}
                 <Button
                   type="button"
                   className="bg-emerald-600 hover:bg-emerald-700 gap-1.5"
