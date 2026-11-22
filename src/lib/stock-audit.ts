@@ -197,7 +197,7 @@ export const buildAuditEvents = (
       subareaName: '',
       subareaRefId: adj.expand?.count?.subarea_id || '',
       countedBy: (() => {
-        const fromCount = countUsers?.get(adj.count)
+        const fromCount = countUsers?.get(adj.expand?.count?.id || '')
         return fromCount?.name || fromCount?.email || '—'
       })(),
       countedAt: countDate,
