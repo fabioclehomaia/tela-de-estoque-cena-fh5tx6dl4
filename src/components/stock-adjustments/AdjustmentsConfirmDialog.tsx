@@ -17,20 +17,19 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { InventoryCount } from '@/services/inventory_counts'
-import { PendingAdjustmentItem } from '@/pages/StockAdjustments'
-
-interface AdjustmentsConfirmDialogProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  items: { count: InventoryCount; newValue: number }[]
-  motive: string
-  onSave: () => void
-  saving: boolean
-}
 
 export interface PendingAdjustmentItem {
   count: InventoryCount
   newValue: number
+}
+
+interface AdjustmentsConfirmDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  items: PendingAdjustmentItem[]
+  motive: string
+  onSave: () => void
+  saving: boolean
 }
 
 export function AdjustmentsConfirmDialog({

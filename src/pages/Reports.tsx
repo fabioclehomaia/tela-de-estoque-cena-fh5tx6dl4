@@ -35,6 +35,7 @@ import {
   AlertTriangle,
   Clock,
   ShieldAlert,
+  ShieldCheck,
   Package,
   SlidersHorizontal,
 } from 'lucide-react'
@@ -86,6 +87,7 @@ import { CmvReport } from '@/components/reports/CmvReport'
 import { FinancialDashboard } from '@/components/reports/FinancialDashboard'
 import AdjustmentsReport from '@/components/reports/AdjustmentsReport'
 import PriceStalenessReport from '@/components/reports/PriceStalenessReport'
+import StockAuditReport from '@/components/reports/StockAuditReport'
 import { InactiveProductMark } from '@/components/shared/InactiveProductMark'
 
 const safeDate = (dateStr: string) => parseISO(dateStr.replace(' ', 'T'))
@@ -140,6 +142,7 @@ export default function Reports() {
   const [userId, setUserId] = useState<string>('_all_')
   const [areaId, setAreaId] = useState<string>('_all_')
   const [subareaId, setSubareaId] = useState<string>('_all_')
+  const [auditEventType, setAuditEventType] = useState<string>('_all_')
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([])
   const [categoryPopoverOpen, setCategoryPopoverOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
@@ -1213,6 +1216,13 @@ export default function Reports() {
               <Clock className="hidden md:inline-block w-4 h-4 shrink-0" />
               <span>Dias sem Ajuste</span>
             </TabsTrigger>
+            <TabsTrigger
+              value="stock-audit"
+              className="flex items-center justify-center gap-2 py-2 px-3 text-xs sm:text-sm whitespace-nowrap"
+            >
+              <ShieldCheck className="hidden md:inline-block w-4 h-4 shrink-0" />
+              <span>Auditoria de Estoque</span>
+            </TabsTrigger>
           </TabsList>
         </div>
 
@@ -1222,7 +1232,8 @@ export default function Reports() {
               {(activeTab === 'history' ||
                 activeTab === 'trends' ||
                 activeTab === 'prices' ||
-                activeTab === 'adjustments') && (
+                activeTab === 'adjustments' ||
+                activeTab === 'stock-audit') && (
                 <div className="space-y-1.5 lg:col-span-2">
                   <Label>Período</Label>
                   <div className="flex items-center gap-2">
@@ -1494,6 +1505,22 @@ export default function Reports() {
                     </Select>
                   </div>
                 </>
+              )}
+
+              {activeTab === 'stock-audit' && (
+                <div className="space-y-1.5">
+                  <Label>Tipo de evento</Label>
+                  <Select value={auditEventType} onValueChange={setAuditEventType}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Todos" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="_all_">Todos</SelectItem>
+                      <SelectItem value="adjustment">Ajuste</SelectItem>
+                      <SelectItem value="variation">Variação de contagem</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               )}
             </div>
 
@@ -2548,6 +2575,17 @@ export default function Reports() {
             priceHistoryLoading={priceHistoryLoading}
             categories={categories}
             selectedCategoryIds={selectedCategoryIds}
+          />
+        </TabsContent>
+
+        <TabsContent value="stock-audit">
+          <StockAuditReport
+            startDate={startDate}
+            endDate={endDate}
+            searchQuery={searchQuery}
+            areaId={areaId}
+            subareaId={subareaId}
+            eventType={auditEventType}
           />
         </TabsContent>
       </Tabs>

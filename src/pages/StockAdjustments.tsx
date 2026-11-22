@@ -67,6 +67,15 @@ const latestByProduct = (rows: InventoryCount[]) => {
   return groupCountsByProduct(rows).map((g) => g[0])
 }
 
+/** groupCountsByProduct devolve grupos; a tela guarda um Map productId -> contagens. */
+const toCountsByProduct = (rows: InventoryCount[]): Map<string, InventoryCount[]> => {
+  const map = new Map<string, InventoryCount[]>()
+  for (const group of groupCountsByProduct(rows)) {
+    if (group[0]) map.set(group[0].product_id, group)
+  }
+  return map
+}
+
 export default function StockAdjustments() {
   const { toast } = useToast()
   const [loading, setLoading] = useState(true)
@@ -142,7 +151,7 @@ export default function StockAdjustments() {
     getInventoryCountsRange(fromIso, undefined, `subarea_id = "${subareaId}"`)
       .then((rows) => {
         if (cancelled) return
-        setCountsByProduct(groupCountsByProduct(rows))
+        setCountsByProduct(toCountsByProduct(rows))
         setCounts(latestByProduct(rows))
       })
       .catch(() => {
@@ -178,7 +187,7 @@ export default function StockAdjustments() {
       getInventoryCountsRange(fromIso, undefined, `product_id.name ~ "${term}"`)
         .then((rows) => {
           if (!cancelled) setGlobalResults(latestByProduct(rows))
-          if (!cancelled) setCountsByProduct(groupCountsByProduct(rows))
+          if (!cancelled) setCountsByProduct(toCountsByProduct(rows))
         })
         .catch(() => {
           if (!cancelled) setGlobalResults([])
@@ -650,7 +659,7 @@ export default function StockAdjustments() {
         onOpenChange={setShowConfirm}
         items={changedItems}
         motive={motive === 'Outros' ? `Outros: ${otherText.trim()}` : motive}
-        onConfirm={handleConfirmSave}
+        onSave={handleConfirmSave}
         saving={saving}
       />
 
