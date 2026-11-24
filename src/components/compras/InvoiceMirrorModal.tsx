@@ -93,6 +93,9 @@ interface InvoiceMirrorModalProps {
   }) => void
 }
 
+const formatBRL = (v: number) =>
+  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0)
+
 export function InvoiceMirrorModal({
   open,
   onOpenChange,
@@ -111,13 +114,17 @@ export function InvoiceMirrorModal({
   const [selectedSupplierId, setSelectedSupplierId] = useState<string>('')
   const [notaFiscal, setNotaFiscal] = useState('')
   const [dataNota, setDataNota] = useState('')
-  const [paymentTerm, setPaymentTerm] = useState('')
   const [itens, setItens] = useState<ExtractedItem[]>([])
   const [confiancaGeral, setConfiancaGeral] = useState<'alta' | 'media' | 'baixa'>('alta')
   const [observacaoIA, setObservacaoIA] = useState<string>('')
+  const [paymentTerm, setPaymentTerm] = useState('')
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
+  // Bloqueia reentrada de gravação (duplo clique) e controla o delta em falha parcial
+  const isSavingRef = useRef(false)
+  const lastSavedItemIndexRef = useRef(-1)
+  const lastSavedTotalRef = useRef(0)
 
   const resetState = () => {
     setStep('upload')
@@ -331,6 +338,7 @@ export function InvoiceMirrorModal({
 
   // Salvar compra do espelho
   const handleSaveCompra = async () => {
+    if (isSavingRef.current) return
     if (itens.length === 0) {
       toast.error('Adicione ao menos um item para salvar a compra.')
       return
@@ -361,6 +369,7 @@ export function InvoiceMirrorModal({
     }
 
     setIsSaving(true)
+    isSavingRef.current = true
     try {
       // 1. Resolver fornecedor se necessário
       let finalSupplierId = selectedSupplierId
@@ -378,7 +387,10 @@ export function InvoiceMirrorModal({
       // 2. Salvar cada item como compra no formato do sistema
       const allLevels = await getInventoryLevels()
 
-      for (const it of itens) {
+      let savedCount = 0
+      let savedTotal = 0
+      for (let i = 0; i < itens.length; i++) {
+        const it = itens[i]
         const payload: any = {
           date: dataNota,
           nota_fiscal: notaFiscal || undefined,
@@ -403,7 +415,27 @@ export function InvoiceMirrorModal({
           payload.is_avulsa = false
         }
 
-        await createCompra(payload)
+        try {
+          await createCompra(payload)
+          savedCount += 1
+          savedTotal += it.valor_total || 0
+          lastSavedItemIndexRef.current = i
+          lastSavedTotalRef.current = savedTotal
+        } catch (itemErr: any) {
+          // Falha parcial: o espelho mantém APENAS os itens ainda não gravados,
+          // para o usuário reenviar sem duplicar o que já foi salvo.
+          console.error('Erro ao salvar item da compra:', itemErr)
+          const remaining = itens.slice(i)
+          setItens(remaining)
+          toast.error(
+            `Erro ao salvar o item ${i + 1} de ${itens.length}: ` +
+              (itemErr?.message || 'Verifique os campos obrigatórios.') +
+              ` — ${savedCount} ${savedCount === 1 ? 'item foi gravado' : 'itens foram gravados'} e a nota continua na tela para reenvio do restante.`,
+            { duration: 10000 },
+          )
+          onSuccess()
+          return
+        }
 
         // Se tiver produto vinculado, atualizar preço médio ponderado
         if (!it.is_avulso && it.product_id) {
@@ -432,22 +464,27 @@ export function InvoiceMirrorModal({
       }
 
       toast.success(
-        `${itens.length} ${itens.length === 1 ? 'item salvo' : 'itens salvos'} com sucesso!`,
+        `Compra gravada com sucesso: ${savedCount} ${savedCount === 1 ? 'item salvo' : 'itens salvos'} • ${formatBRL(savedTotal)}`,
       )
       handleClose()
       onSuccess()
     } catch (err: any) {
       console.error('Erro ao salvar compras:', err)
-      toast.error('Erro ao salvar compras: ' + (err.message || 'Verifique os campos obrigatórios.'))
+      toast.error(
+        'Erro ao salvar compras: ' +
+          (err?.message || 'Verifique os campos obrigatórios.') +
+          ' — os dados continuam na tela para reenvio.',
+      )
     } finally {
       setIsSaving(false)
+      isSavingRef.current = false
     }
   }
 
   const valorTotalGeral = itens.reduce((sum, it) => sum + (it.valor_total || 0), 0)
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
+    <Dialog open={open} onOpenChange={(o) => !isSaving && handleClose()}>
       <DialogContent className="sm:max-w-[850px] max-h-[90vh] flex flex-col p-6 overflow-hidden">
         <DialogHeader className="pb-3 border-b border-zinc-100 shrink-0">
           <div className="flex items-center justify-between">

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -12,6 +12,7 @@ import {
   ReceiptText,
   FilterX,
   Layers,
+  Loader2,
 } from 'lucide-react'
 import { getCompras, createCompra, updateCompra, deleteCompra, Compra } from '@/services/compras'
 import { getProducts, updateProduct, Product } from '@/services/products'
@@ -36,7 +37,7 @@ import {
 } from '@/lib/purchases-filter'
 import { downloadPurchasesCsv } from '@/lib/purchases-export'
 import { useRealtime } from '@/hooks/use-realtime'
-import { extractFieldErrors } from '@/lib/pocketbase/errors'
+import { extractFieldErrors, getErrorMessage } from '@/lib/pocketbase/errors'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -86,6 +87,27 @@ const defaultValues = {
   date: format(new Date(), 'yyyy-MM-dd'),
 }
 
+// Proteção anti-duplicidade: compra idêntica (mesmo produto, qtd, preço, NF e data)
+// gravada nos últimos segundos faz o app avisar em vez de duplicar.
+const RECENT_DUPLICATE_WINDOW_MS = 60_000
+
+const findRecentDuplicate = (
+  compras: Compra[],
+  data: { product_id: string; quantity: number; price: number; nota_fiscal?: string; date: string },
+) => {
+  const cutoff = Date.now() - RECENT_DUPLICATE_WINDOW_MS
+  return compras.find((c) => {
+    const createdMs = c.created ? new Date(c.created).getTime() : NaN
+    if (!Number.isFinite(createdMs) || createdMs < cutoff) return false
+    const sameProduct = (c.product_id || '') === data.product_id
+    const sameQuantity = Math.abs((c.quantity || 0) - (data.quantity || 0)) < 0.0001
+    const samePrice = Math.abs((c.price || 0) - (data.price || 0)) < 0.0001
+    const sameNota = (c.nota_fiscal || '') === (data.nota_fiscal || '')
+    const sameDate = (c.date || '').split(' ')[0] === (data.date || '')
+    return sameProduct && sameQuantity && samePrice && sameNota && sameDate
+  })
+}
+
 export default function Purchases() {
   const [compras, setCompras] = useState<Compra[]>([])
   const [products, setProducts] = useState<Product[]>([])
@@ -100,6 +122,8 @@ export default function Purchases() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [filters, setFilters] = useState<PurchasesFilterState>(initialPurchasesFilters)
   const [isExporting, setIsExporting] = useState(false)
+  const [isSavingCompra, setIsSavingCompra] = useState(false)
+  const isSavingCompraRef = useRef(false)
 
   const form = useForm<z.infer<typeof schema>>({
     resolver: zodResolver(schema),
@@ -185,6 +209,10 @@ export default function Purchases() {
   }
 
   const onSubmit = async (data: z.infer<typeof schema>) => {
+    // Evita reenvio por duplo clique enquanto a gravação anterior está em andamento
+    if (isSavingCompraRef.current) return
+    isSavingCompraRef.current = true
+    setIsSavingCompra(true)
     try {
       const payload = {
         ...data,
@@ -193,10 +221,23 @@ export default function Purchases() {
       }
       if (editingId) {
         await updateCompra(editingId, payload)
+        setIsOpen(false)
+        toast.success('Compra atualizada com sucesso!')
       } else {
+        // Proteção anti-duplicidade: compra idêntica há menos de 1 minuto
+        const recentDuplicate = findRecentDuplicate(compras, data)
+        if (recentDuplicate) {
+          toast.warning(
+            'Uma compra idêntica deste produto já foi gravada há menos de 1 minuto. ' +
+              'Confira a listagem antes de lançar novamente — nada foi gravado agora.',
+            { duration: 9000 },
+          )
+          return
+        }
         await createCompra(payload)
 
         // Atualizar preço médio ponderado do produto (apenas na criação de nova compra)
+        let priceUpdateWarning = false
         try {
           const product = products.find((p) => p.id === data.product_id)
           if (product) {
@@ -216,14 +257,28 @@ export default function Purchases() {
           }
         } catch (priceErr) {
           console.error('Falha ao atualizar preço médio ponderado do produto:', priceErr)
+          priceUpdateWarning = true
+        }
+
+        setIsOpen(false)
+        toast.success(
+          `Compra de ${formatCurrency(data.quantity * data.price)} gravada com sucesso!` +
+            (priceUpdateWarning ? ' (preço do produto não foi atualizado)' : ''),
+        )
+        if (priceUpdateWarning) {
           toast.warning('Compra registrada, mas não foi possível atualizar o preço do produto.')
         }
       }
-      setIsOpen(false)
-      toast.success('Compra registrada com sucesso!')
     } catch (e) {
       const errs = extractFieldErrors(e)
       Object.keys(errs).forEach((k) => form.setError(k as any, { message: errs[k] }))
+      const serverMsg = getErrorMessage(e)
+      const fallbackMsg =
+        'Erro ao registrar a compra. Verifique os dados e tente novamente — os campos continuam preenchidos.'
+      toast.error(serverMsg && !/unexpected/i.test(serverMsg) ? serverMsg : fallbackMsg)
+    } finally {
+      isSavingCompraRef.current = false
+      setIsSavingCompra(false)
     }
   }
 
@@ -479,8 +534,19 @@ export default function Purchases() {
                       </FormItem>
                     )}
                   />
-                  <Button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700">
-                    Salvar
+                  <Button
+                    type="submit"
+                    className="w-full bg-emerald-600 hover:bg-emerald-700"
+                    disabled={isSavingCompra}
+                  >
+                    {isSavingCompra ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Salvando...
+                      </>
+                    ) : (
+                      'Salvar'
+                    )}
                   </Button>
                 </form>
               </Form>
