@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -69,6 +69,8 @@ export function CompraAvulsaModal({
   onSuccess,
 }: CompraAvulsaModalProps) {
   const [isSubmitting, setIsSubmitting] = useState(false)
+  // Bloqueia reenvio por duplo clique/clique repetido durante a gravação
+  const isSubmittingRef = useRef(false)
 
   const form = useForm<AvulsaFormValues>({
     resolver: zodResolver(avulsaSchema),
@@ -112,6 +114,8 @@ export function CompraAvulsaModal({
   }, [open, editingCompra, form])
 
   const onSubmit = async (values: AvulsaFormValues) => {
+    if (isSubmittingRef.current) return
+    isSubmittingRef.current = true
     setIsSubmitting(true)
     try {
       const payload: Partial<Compra> = {
@@ -142,6 +146,7 @@ export function CompraAvulsaModal({
       console.error('Erro ao salvar compra avulsa:', err)
       toast.error('Erro ao salvar compra avulsa: ' + (err.message || 'Verifique os dados.'))
     } finally {
+      isSubmittingRef.current = false
       setIsSubmitting(false)
     }
   }

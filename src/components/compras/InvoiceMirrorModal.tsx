@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import pb from '@/lib/pocketbase/client'
 import { Product, updateProduct } from '@/services/products'
 import { Fornecedor, createFornecedor } from '@/services/fornecedores'
@@ -125,6 +125,14 @@ export function InvoiceMirrorModal({
   const isSavingRef = useRef(false)
   const lastSavedItemIndexRef = useRef(-1)
   const lastSavedTotalRef = useRef(0)
+  // Marca os itens já gravados com sucesso nesta sessão: num segundo clique
+  // (ou num "Salvar compra" repetido) o que já foi salvo não é regravado.
+  const savedItemIdsRef = useRef<Set<string>>(new Set())
+
+  useEffect(() => {
+    if (open) return
+    savedItemIdsRef.current = new Set()
+  }, [open])
 
   const resetState = () => {
     setStep('upload')
@@ -371,6 +379,14 @@ export function InvoiceMirrorModal({
     setIsSaving(true)
     isSavingRef.current = true
     try {
+      // Itens ainda não gravados: num segundo clique (ou reenvio após falha
+      // parcial) o que já foi salvo não é regravado.
+      const pendingItens = itens.filter((it) => !savedItemIdsRef.current.has(it.id))
+      if (pendingItens.length === 0) {
+        toast.warning('Todos os itens desta nota já foram gravados — nada foi duplicado.')
+        return
+      }
+
       // 1. Resolver fornecedor se necessário
       let finalSupplierId = selectedSupplierId
       if (selectedSupplierId === '__new__' && supplierName.trim()) {
@@ -389,8 +405,8 @@ export function InvoiceMirrorModal({
 
       let savedCount = 0
       let savedTotal = 0
-      for (let i = 0; i < itens.length; i++) {
-        const it = itens[i]
+      for (let i = 0; i < pendingItens.length; i++) {
+        const it = pendingItens[i]
         const payload: any = {
           date: dataNota,
           nota_fiscal: notaFiscal || undefined,
@@ -425,10 +441,12 @@ export function InvoiceMirrorModal({
           // Falha parcial: o espelho mantém APENAS os itens ainda não gravados,
           // para o usuário reenviar sem duplicar o que já foi salvo.
           console.error('Erro ao salvar item da compra:', itemErr)
-          const remaining = itens.slice(i)
+          // Os itens já gravados nesta tentativa nunca serão regravados.
+          pendingItens.slice(0, i).forEach((done) => savedItemIdsRef.current.add(done.id))
+          const remaining = pendingItens.slice(i)
           setItens(remaining)
           toast.error(
-            `Erro ao salvar o item ${i + 1} de ${itens.length}: ` +
+            `Erro ao salvar o item ${i + 1} de ${pendingItens.length}: ` +
               (itemErr?.message || 'Verifique os campos obrigatórios.') +
               ` — ${savedCount} ${savedCount === 1 ? 'item foi gravado' : 'itens foram gravados'} e a nota continua na tela para reenvio do restante.`,
             { duration: 10000 },
@@ -463,6 +481,9 @@ export function InvoiceMirrorModal({
         }
       }
 
+      // Marca tudo como gravado antes de qualquer fechamento: se o estado do
+      // modal sobreviver a um fechamento abrupto, um novo clique não regrava.
+      pendingItens.forEach((it) => savedItemIdsRef.current.add(it.id))
       toast.success(
         `Compra gravada com sucesso: ${savedCount} ${savedCount === 1 ? 'item salvo' : 'itens salvos'} • ${formatBRL(savedTotal)}`,
       )
@@ -957,7 +978,7 @@ export function InvoiceMirrorModal({
                         })),
                       })
                     }
-                    disabled={itens.length === 0}
+                    disabled={isSaving || itens.length === 0}
                   >
                     <Layers className="w-4 h-4 text-emerald-600" />
                     Enviar para lote

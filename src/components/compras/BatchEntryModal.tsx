@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { format } from 'date-fns'
 import { Plus, Trash2, Loader2, Layers, AlertTriangle, CheckCircle2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -83,6 +83,10 @@ export function BatchEntryModal({
   const [lines, setLines] = useState<BatchLine[]>([emptyLine()])
   const [lineErrors, setLineErrors] = useState<Map<string, string>>(new Map())
   const [isSaving, setIsSaving] = useState(false)
+  // Bloqueia reenvio por duplo clique/clique repetido durante a gravação do lote
+  const isSavingRef = useRef(false)
+  // Marca as linhas já gravadas com sucesso, para não regravar num segundo clique
+  const savedKeysRef = useRef<Set<string>>(new Set())
 
   // Pré-carga (ex: itens vindos do espelho da nota IA)
   useEffect(() => {
@@ -93,6 +97,7 @@ export function BatchEntryModal({
     setPaymentTerm(seed?.payment_term || '')
     setLines(seed?.lines?.length ? seed.lines : [emptyLine()])
     setLineErrors(new Map())
+    savedKeysRef.current = new Set()
   }, [open, seed])
 
   const productsMap = useMemo(() => new Map(products.map((p) => [p.id, p])), [products])
@@ -135,12 +140,14 @@ export function BatchEntryModal({
   }
 
   const handleSave = async () => {
+    if (isSavingRef.current) return
     if (!validate()) {
       toast.error('Corrija os itens destacados antes de salvar.')
       return
     }
 
     setIsSaving(true)
+    isSavingRef.current = true
     try {
       const header: BatchHeader = {
         supplier_id: supplierId || undefined,
@@ -148,13 +155,21 @@ export function BatchEntryModal({
         nota_fiscal: notaFiscal.trim() || undefined,
         payment_term: paymentTerm.trim() || undefined,
       }
-      const { saved, failures } = await saveBatchCompras(header, lines, products)
+      // Só envia as linhas ainda não gravadas: num segundo clique (ou reenvio
+      // após falha parcial) o que já foi salvo não é regravado.
+      const pending = lines.filter((l) => !savedKeysRef.current.has(l.key))
+      const { saved, failures } = await saveBatchCompras(header, pending, products)
+      savedKeysRef.current = new Set([
+        ...savedKeysRef.current,
+        ...pending.filter((l) => !failures.some((f) => f.key === l.key)).map((l) => l.key),
+      ])
       handleSaveResult(saved, failures)
     } catch (err: any) {
       console.error('Erro ao salvar lote de compras:', err)
       toast.error('Erro ao salvar lote: ' + (err?.message || 'Verifique os dados.'))
     } finally {
       setIsSaving(false)
+      isSavingRef.current = false
     }
   }
 

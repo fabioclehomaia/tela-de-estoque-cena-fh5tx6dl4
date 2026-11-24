@@ -124,6 +124,8 @@ export default function Purchases() {
   const [isExporting, setIsExporting] = useState(false)
   const [isSavingCompra, setIsSavingCompra] = useState(false)
   const isSavingCompraRef = useRef(false)
+  // Compra recém-gravada, para destacá-la na listagem após o sucesso
+  const [recentCompraId, setRecentCompraId] = useState<string | null>(null)
 
   const form = useForm<z.infer<typeof schema>>({
     resolver: zodResolver(schema),
@@ -234,7 +236,9 @@ export default function Purchases() {
           )
           return
         }
-        await createCompra(payload)
+        const created = await createCompra(payload)
+        // Destaca a compra nova na listagem (o modal fecha logo abaixo)
+        setRecentCompraId(created.id)
 
         // Atualizar preço médio ponderado do produto (apenas na criação de nova compra)
         let priceUpdateWarning = false
@@ -278,8 +282,18 @@ export default function Purchases() {
       toast.error(serverMsg && !/unexpected/i.test(serverMsg) ? serverMsg : fallbackMsg)
     } finally {
       isSavingCompraRef.current = false
-      setIsSavingCompra(false)
+      // Em caso de SUCESSO o estado de envio permanece travado: o modal já foi
+      // fechado e o formulário resetado, então um novo clique não reenvia os
+      // mesmos dados. Ele só é liberado quando o modal é reaberto ou ao editar.
+      if (isOpen) setIsSavingCompra(false)
     }
+  }
+
+  const handleOpenNovoCompra = () => {
+    setEditingId(null)
+    form.reset(defaultValues)
+    setIsSavingCompra(false)
+    isSavingCompraRef.current = false
   }
 
   const handleEdit = (c: Compra) => {
@@ -306,7 +320,10 @@ export default function Purchases() {
     setIsOpen(open)
     if (!open) {
       setEditingId(null)
+      setRecentCompraId(null)
       form.reset(defaultValues)
+      setIsSavingCompra(false)
+      isSavingCompraRef.current = false
     }
   }
 
@@ -373,8 +390,7 @@ export default function Purchases() {
               <Button
                 className="bg-emerald-600 hover:bg-emerald-700"
                 onClick={() => {
-                  setEditingId(null)
-                  form.reset(defaultValues)
+                  handleOpenNovoCompra()
                 }}
               >
                 <Plus className="w-4 h-4 mr-1.5" /> Nova Compra
@@ -544,6 +560,8 @@ export default function Purchases() {
                         <Loader2 className="w-4 h-4 animate-spin" />
                         Salvando...
                       </>
+                    ) : editingId ? (
+                      'Salvar alterações'
                     ) : (
                       'Salvar'
                     )}
@@ -583,11 +601,20 @@ export default function Purchases() {
             <div
               key={c.id}
               className={`flex flex-col sm:flex-row sm:items-center justify-between p-4 border rounded-lg shadow-sm gap-3 transition-colors ${
-                isAvulsa ? 'bg-amber-50/40 border-amber-200' : 'bg-white border-zinc-200'
+                c.id === recentCompraId
+                  ? 'bg-emerald-50 border-emerald-400 ring-1 ring-emerald-300'
+                  : isAvulsa
+                    ? 'bg-amber-50/40 border-amber-200'
+                    : 'bg-white border-zinc-200'
               }`}
             >
               <div className="flex flex-col gap-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
+                  {c.id === recentCompraId && (
+                    <Badge className="bg-emerald-600 text-white text-[10px] py-0">
+                      Gravada agora
+                    </Badge>
+                  )}
                   {isAvulsa ? (
                     <>
                       <Badge
@@ -709,8 +736,7 @@ export default function Purchases() {
                 size="sm"
                 className="bg-emerald-600 hover:bg-emerald-700"
                 onClick={() => {
-                  setEditingId(null)
-                  form.reset(defaultValues)
+                  handleOpenNovoCompra()
                   setIsOpen(true)
                 }}
               >
