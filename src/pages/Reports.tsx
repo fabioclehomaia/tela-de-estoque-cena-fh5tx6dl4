@@ -908,12 +908,35 @@ export default function Reports() {
     if (activeTab === 'summary') {
       title = 'Estoque Atual'
       headers = isSpecificAreaAndSubarea
-        ? ['Produto', 'Categoria', 'Unidade', 'Quantidade', 'Última Contagem nesta Subárea']
-        : ['Produto', 'Categoria', 'Unidade', 'Quantidade', 'Última Contagem', 'Responsável']
+        ? [
+            'Produto',
+            'Categoria',
+            'Unidade',
+            'Quantidade',
+            'Preço Unitário',
+            'Valor em Estoque',
+            'Última Contagem nesta Subárea',
+          ]
+        : [
+            'Produto',
+            'Categoria',
+            'Unidade',
+            'Quantidade',
+            'Preço Unitário',
+            'Valor em Estoque',
+            'Última Contagem',
+            'Responsável',
+          ]
       data = summaryByProduct.map((row) => {
         const lc = row.latestCount
         const userName =
           lc?.expand?.user_id?.name || lc?.expand?.user_id?.email?.split('@')[0] || 'Usuário'
+
+        // Mesmos valores exibidos na tela: preço cadastrado e quantidade
+        // aplicada (com delta de ajuste) × preço. Sem preço cadastrado,
+        // "—" (placeholder da tela) em vez de um R$ 0,00 enganoso.
+        const priceCell = row.price ? formatCurrency(row.price) : '—'
+        const stockValueCell = row.price ? formatCurrency(row.stockValue) : '—'
 
         if (isSpecificAreaAndSubarea) {
           return [
@@ -921,6 +944,8 @@ export default function Reports() {
             row.category,
             row.unit,
             row.total,
+            priceCell,
+            stockValueCell,
             lc
               ? `Contado por ${userName} em ${format(safeDate(lc.created), "dd/MM/yyyy 'às' HH:mm")}`
               : 'Sem contagem nesta subárea',
@@ -932,10 +957,26 @@ export default function Reports() {
           row.category,
           row.unit,
           row.total,
+          priceCell,
+          stockValueCell,
           lc ? format(safeDate(lc.created), 'dd/MM/yyyy HH:mm') : 'Sem contagem',
           lc ? userName : '-',
         ]
       })
+
+      // Linha de total: soma do valor em estoque das linhas exportadas —
+      // a mesma soma do card "Valor Total em Estoque" do topo da tela.
+      const totalRow: any[] = [
+        'Total',
+        '',
+        '',
+        '',
+        '',
+        formatCurrency(summaryStockTotals.totalValue),
+      ]
+      if (isSpecificAreaAndSubarea) totalRow.push('')
+      else totalRow.push('', '')
+      data.push(totalRow)
     } else if (activeTab === 'shopping') {
       title = 'Lista de Compras'
       headers = [
