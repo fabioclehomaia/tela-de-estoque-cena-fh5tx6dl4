@@ -80,6 +80,10 @@ import { getUsers, User } from '@/services/users'
 import { getProducts, Product } from '@/services/products'
 import { getProductPriceHistory, ProductPriceHistory } from '@/services/product_price_history'
 import { useAuth } from '@/hooks/use-auth'
+import { useRealtime } from '@/hooks/use-realtime'
+import { useRecentAdjustments } from '@/hooks/use-recent-adjustments'
+import { getAdjustmentDelta } from '@/lib/stock-time-machine'
+import type { RecordModel } from 'pocketbase'
 import pb from '@/lib/pocketbase/client'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
@@ -195,6 +199,40 @@ export default function Reports() {
     }
     loadData()
   }, [toast])
+
+  // Ajustes de estoque: carregados uma vez e mantidos ao vivo por realtime.
+  // O Estoque Atual aplica o delta do ajuste mais recente sobre o nível contado.
+  const { latestAdjustmentByProduct } = useRecentAdjustments()
+
+  // Realtime: produtos (nome, preço unitário, ativo) — merge incremental, sem
+  // recarregar tudo. Uma compra retificada reflete no valor em estoque na hora.
+  useRealtime<RecordModel & Partial<Product>>('products', (e) => {
+    if (e.action === 'delete') {
+      setProducts((prev) => prev.filter((p) => p.id !== e.record.id))
+    } else {
+      setProducts((prev) => {
+        const map = new Map(prev.map((p) => [p.id, p]))
+        const existing = map.get(e.record.id)
+        // Realtime não traz expand: preserva o expand já carregado.
+        map.set(e.record.id, { ...(existing || {}), ...e.record } as Product)
+        return Array.from(map.values())
+      })
+    }
+  })
+
+  // Realtime: níveis de estoque — merge incremental (idem produtos).
+  useRealtime<RecordModel & Partial<InventoryLevel>>('inventory_levels', (e) => {
+    if (e.action === 'delete') {
+      setLevels((prev) => prev.filter((l) => l.id !== e.record.id))
+    } else {
+      setLevels((prev) => {
+        const map = new Map(prev.map((l) => [l.id, l]))
+        const existing = map.get(e.record.id)
+        map.set(e.record.id, { ...(existing || {}), ...e.record } as InventoryLevel)
+        return Array.from(map.values())
+      })
+    }
+  })
 
   // Usuários: necessários na aba Histórico (filtro "Funcionário" e a coluna).
   const [usersLoaded, setUsersLoaded] = useState(false)
@@ -524,6 +562,14 @@ export default function Reports() {
       }
     })
 
+    // Ajuste de estoque: inventory_levels guardam o valor CONTADO; o ajuste
+    // mais recente do produto é a retificação sobre esse valor (delta =
+    // corrigido − original, pode ser negativo). Ex.: ovos 60 + (2 − 60) = 2.
+    map.forEach((item) => {
+      const adj = latestAdjustmentByProduct.get(item.id)
+      if (adj) item.total += getAdjustmentDelta(adj)
+    })
+
     let arr = Array.from(map.values())
 
     // Valor em estoque por linha (quantidade filtrada × preço unitário), na
@@ -564,6 +610,7 @@ export default function Reports() {
     products,
     subareas,
     areas,
+    latestAdjustmentByProduct,
     searchQuery,
     selectedCategoryIds,
     areaId,
